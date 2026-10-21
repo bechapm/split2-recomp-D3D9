@@ -92,6 +92,65 @@ void sub_001AD1D0(void) { ts2_ui_enter(); sub_001AD1D0_gen(); ts2_ui_leave(); }
 extern void sub_001B7520_gen(void);
 void sub_001B7520(void) { ts2_ui_enter(); sub_001B7520_gen(); ts2_ui_leave(); }
 
+/* Extra characters from mods (ts2_chars_main and the Gallery hooks in
+ * recomp_manual.c). main is sub_000D99F0(argc, argv), called from the CRT's
+ * start-up (sub_001CF35A); the tables are patched before it runs. The
+ * Gallery's grid is built by sub_00099960 (it sets 14 columns and 9 rows
+ * last) and drawn by sub_00098F40, whose cells are 0.45 (0x00222534) of a
+ * portrait apart. docs/formats/roster.md has the tables. */
+extern void sub_000D99F0_gen(void);
+void sub_000D99F0(void) { ts2_chars_main(sub_000D99F0_gen); }
+extern void sub_00099960_gen(void);
+void sub_00099960(void) { ts2_gallery_build(sub_00099960_gen); }
+extern void sub_00098F40_gen(void);
+void sub_00098F40(void) { ts2_gallery_draw(sub_00098F40_gen); }
+/* sub_0008FAE0 draws a Select Character item, finding its portrait by chr
+ * id among the roster's first 127 entries: the one search the XBE patches
+ * cannot widen (its bound is an imm8). */
+extern void sub_0008FAE0_gen(void);
+void sub_0008FAE0(void) { ts2_chars_item_draw(sub_0008FAE0_gen); }
+
+/* Loose mod files inside the paks (ts2_paks_* in recomp_manual.c, which
+ * says how the game finds a file). sub_00085DB0(path, into_memory, heap)
+ * mounts a pak into the table at 0x358A38 (25 records of 0x20, count at
+ * 0x358A18): the mods' files go into its directory there. sub_000864B0
+ * (name, buffer, size) seeks and reads a file and sub_00086880(name, buffer,
+ * size) starts an overlapped read of one (sub_00086970 polls it while
+ * 0x358D88 is set): a mod's file is read from the mod. sub_00086300 and
+ * sub_000860A0 are the game's lookups (P4CK, P8CK), which leave the record
+ * they found the file in at 0x358A30. */
+extern void sub_00086300(void);
+extern void sub_000860A0(void);
+const Ts2Paks k_ts2_paks = {
+    0x00358A38, 0x00358A18, 25,   /* the table, its count, its size */
+    0x00358A30, 0x00358D88,       /* the last lookup's record; a read pending */
+    sub_00086300, sub_000860A0,
+};
+extern void sub_00085DB0_gen(void);
+void sub_00085DB0(void) { ts2_paks_mount(sub_00085DB0_gen); }
+extern void sub_000864B0_gen(void);
+void sub_000864B0(void) { ts2_paks_read(sub_000864B0_gen); }
+extern void sub_00086880_gen(void);
+void sub_00086880(void) { ts2_paks_read_async(sub_00086880_gen); }
+
+/* The roster and the texture list are where config/pal/xbe_patches.json
+ * moved them: the section TS2ROSTER at 0x004CE000 (the roster, 127 + 32
+ * entries, at +0; the texture list, 548 + 32 entries from 0x004CF800, whose
+ * paths are at +8). That file is applied by every PAL lift (scripts/build.py),
+ * and src/recomp/ts2_region.h says so. */
+#ifndef TS2_XBE_PATCHES_SHA1
+#  error "the PAL release is lifted with config/pal/xbe_patches.json; lift again with scripts/build.py --relift"
+#endif
+const Ts2Roster k_ts2_roster = {
+    0x004CE000, 159, 127, 127,  /* roster: slots, the first spare one, sub_0008FAE0's reach */
+    0x002AA060, 162,      /* character definitions */
+    0x004CF808, 580,      /* texture list (the paths), with the spare slots' portraits */
+    470, 12,              /* chrblank_atom .. chrblank_west */
+    0x003362F0, 5, 2770,  /* string tables: English, French, German, Italian, Spanish */
+    0x0035C80C, 0x0035F4A4, 0x00222534,  /* Gallery: columns, rows, cell scale */
+    625,                  /* Gallery descriptions: text 625 + chr id (sub_00099430) */
+};
+
 /* Where TimeSplitters 2 (PAL, this XBE) draws what. Sites are return
  * addresses in the game's UI code. Ends at site 0.
  *
