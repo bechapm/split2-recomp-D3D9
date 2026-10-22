@@ -62,6 +62,12 @@ rigid piece that moves with one bone. So:
   with a new image: it becomes a new game texture by itself. Image sides
   should be powers of two (64, 128, 256 or 512 pixels).
 
+Examples:
+
+![Blender Interface](./blender1.png)
+
+![Imported Model](./blender2.png)
+
 ## 4. Make your changes
 
 **To change a character:** select a body-part object, press **Tab** for Edit
