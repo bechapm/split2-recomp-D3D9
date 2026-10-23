@@ -206,3 +206,6 @@ changes.
 You need your own copy of TimeSplitters 2. Do not share `game/`, `src/recomp/`
 (it is the game's translated code) or anything in `build/`. This repository and
 xboxrecomp contain no game code or assets.
+
+The code in this repository is licensed under the GNU General Public License
+v3.0; see [LICENSE](LICENSE). That covers the files committed here, not the game.
