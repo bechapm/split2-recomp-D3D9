@@ -7,6 +7,10 @@
 /* The free camera's portal walk: room_walk(from, from_room, to, 0), cdecl,
  * returns the room holding `to` (code; up to 100 portals). */
 extern void sub_0001FDC0(void);
+/* The ray test sub_00020160 (47 callers; a wrapper of the core
+ * sub_0001FE80, which walks the rooms through their portals and tests each
+ * with sub_00154DF0). Its own wrapper in overrides.inc is what is called. */
+extern void sub_00020160(void);
 
 static const Ts2DevAddrs k_ts2_dev = {
     /* player_base: [0x00497028] is the local player records, 0xD3C each;
@@ -43,4 +47,15 @@ static const Ts2DevAddrs k_ts2_dev = {
      * (ctx+0x304), all by value; 0x00036D4C is its return address (code). */
     0x00036D4C,
     sub_0001FDC0,
+    sub_00020160,
+    /* object_list: 1324 entries of 0x24, a pointer to the ob/... name first;
+     * an object's model index is at +8 (measured: chr47.xbr for Ilsa). */
+    0x002D89CC,
+    /* sight_returns: the AI perception update sub_00065340 runs
+     * sub_00080590 (story) or sub_0006B450 (otherwise), which cast the ray
+     * from the enemy's room at its target (R+0x1300) and count the target
+     * seen when the ray's object is the target (cmp eax,edi at 0x00080761,
+     * 0x00080A4C, 0x0006B650; cmp eax,[esi+0x1300] at 0x000808A7; test at
+     * 0x0006B7C3). These are those calls' return addresses (code). */
+    { 0x00080761, 0x0008089E, 0x00080A49, 0x0006B64D, 0x0006B7BE },
 };

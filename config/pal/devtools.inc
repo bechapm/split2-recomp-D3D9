@@ -17,4 +17,6 @@ static const Ts2DevAddrs k_ts2_dev = {
     0,                  /* context */
     0,                  /* look_at */
     0,                  /* room walk */
+    0, 0,               /* ray, object list */
+    { 0 },              /* sight rays */
 };

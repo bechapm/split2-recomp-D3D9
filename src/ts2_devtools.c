@@ -16,7 +16,17 @@
  *   ts2_god = 1            RECOMP_TS2_GOD          god mode from the start
  *   ts2_infinite_ammo = 1  RECOMP_TS2_INFINITE_AMMO
  *   ts2_unlock_all = 1     RECOMP_TS2_UNLOCK_ALL   every character, level and cheat
- *   ts2_readout = 1        RECOMP_TS2_READOUT      the position line from the start
+ *   ts2_invisible = 1      RECOMP_TS2_INVISIBLE    enemies cannot see the player
+ *   ts2_readout = 1        RECOMP_TS2_READOUT      the readout from the start: the
+ *                          position, what the middle of the view is on (the
+ *                          game's own ray: point, distance, room, door,
+ *                          character or pickup and its model) and which
+ *                          tools are on
+ *   ts2_dev_seq = <frame>:<action>,...  RECOMP_TS2_DEV_SEQ
+ *                          the keys' actions at given frames (from the first
+ *                          present), for scripted runs: readout god ammo
+ *                          unlock save load freecam noclip freeze step
+ *                          invisible
  *   ts2_teleport = x,y,z[,yaw,pitch]  RECOMP_TS2_TELEPORT
  *                          where the player is put once the first level is
  *                          playing: a repeatable spot for a scripted run
@@ -24,7 +34,8 @@
  * The keys (with ts2_dev, only while the game's window is in front):
  *
  *   F1  readout on/off     F2  god mode        F3  infinite ammo
- *   F4  unlock everything  F5  save position   F6  back to the saved position
+ *   F4  invisible to enemies                   Home  unlock everything
+ *   F5  save position      F6  back to the saved position
  *   F7  free camera        F8  noclip          F12 or Pause: stop the clock
  *   Page Down: one frame forward while the clock is stopped
  *
@@ -56,6 +67,10 @@
  *     player is in is found by the game's own portal walk, so drawing
  *     starts from the right room. Noclip keeps god mode on, and for five
  *     seconds after, so landing from a height is not a death.
+ *   invisible: an enemy sees its target when its sight ray reaches it;
+ *     those rays (and only those: bullets are untouched) reach nothing when
+ *     they reach the player. Security cameras, alarms and sensors are not
+ *     covered yet.
  *   free camera: the eye and direction the camera update hands its
  *     look-at, replaced at that one call, and the room drawing starts from
  *     found by the portal walk, so the view, everything made from it and
@@ -103,7 +118,7 @@ extern int         xbox_InputRead(unsigned port, uint16_t *buttons, uint8_t anal
 enum {
     VK_F1_ = 0x70, VK_F2_, VK_F3_, VK_F4_, VK_F5_, VK_F6_, VK_F7_, VK_F8_,
     VK_F12_ = 0x7B, VK_PAUSE_ = 0x13, VK_NEXT_ = 0x22, VK_SHIFT_ = 0x10,
-    VK_SPACE_ = 0x20, VK_CONTROL_ = 0x11,
+    VK_SPACE_ = 0x20, VK_CONTROL_ = 0x11, VK_HOME_ = 0x24,
     VK_LEFT_ = 0x25, VK_UP_, VK_RIGHT_, VK_DOWN_,
 };
 
@@ -118,7 +133,7 @@ static struct {
     int  configured, keys, readout;
     int  god, ammo, unlock;            /* what the player asked for */
     int  god_written, ammo_written, unlock_written;
-    int  frozen, step, freecam, noclip;
+    int  frozen, step, freecam, noclip, invisible;
     int  god_hold;                      /* frames god stays on after noclip */
     int  key_was[256];
     char msg[64];
@@ -175,33 +190,60 @@ static uint32_t dev_context(void)
     return dev_ptr_ok(ctx) ? ctx : 0;
 }
 
-/* room_walk(from, from_room, to, 0), called on the guest stack below the
- * caller's: the two points go just under it, the arguments under those.
- * The room holding `to`, or -1. The registers a caller of the hook may
- * still want (the hooked function's result) are kept. */
-static int dev_room_walk(const float from[3], int from_room, const float to[3])
+/* A call of a game function from here: its cdecl arguments pushed on the
+ * guest stack below the caller's (and below `scratch` bytes kept for the
+ * points it reads and writes, at the returned address), a return address of
+ * none, and its result. The registers a caller of the hook may still want
+ * (the hooked function's result) are kept. */
+static uint32_t dev_scratch(uint32_t bytes)
 {
-    uint32_t top = g_esp, pts = top - 0x40, eax = g_eax, ecx = g_ecx, edx = g_edx;
-    int i, room;
+    return (g_esp - 0x10u - bytes) & ~0xFu;
+}
 
-    if (!A->room_walk || from_room < 0)
-        return -1;
-    for (i = 0; i < 3; i++) {
-        DEV_MEMF(pts + 4u * (uint32_t)i) = from[i];
-        DEV_MEMF(pts + 0x10u + 4u * (uint32_t)i) = to[i];
+static uint32_t dev_guest_call(void (*fn)(void), uint32_t below, const uint32_t *args, int n)
+{
+    uint32_t top = g_esp, eax = g_eax, ecx = g_ecx, edx = g_edx, result;
+    int i;
+
+    g_esp = below;
+    for (i = n - 1; i >= 0; i--) {
+        g_esp -= 4;
+        DEV_MEM32(g_esp) = args[i];
     }
-    g_esp = pts;
-    g_esp -= 4; DEV_MEM32(g_esp) = 0;
-    g_esp -= 4; DEV_MEM32(g_esp) = pts + 0x10u;
-    g_esp -= 4; DEV_MEM32(g_esp) = (uint32_t)from_room;
-    g_esp -= 4; DEV_MEM32(g_esp) = pts;
-    g_esp -= 4; DEV_MEM32(g_esp) = 0;   /* return address: none */
-    A->room_walk();
-    room = (int)g_eax;
+    g_esp -= 4;
+    DEV_MEM32(g_esp) = 0;               /* return address: none */
+    fn();
+    result = g_eax;
     g_esp = top;
     g_eax = eax;
     g_ecx = ecx;
     g_edx = edx;
+    return result;
+}
+
+static void dev_put3(uint32_t at, const float v[3])
+{
+    int i;
+
+    for (i = 0; i < 3; i++)
+        DEV_MEMF(at + 4u * (uint32_t)i) = v[i];
+}
+
+/* room_walk(from, from_room, to, 0): the room holding `to`, or -1. */
+static int dev_room_walk(const float from[3], int from_room, const float to[3])
+{
+    uint32_t pts = dev_scratch(0x20), args[4];
+    int room;
+
+    if (!A->room_walk || from_room < 0)
+        return -1;
+    dev_put3(pts, from);
+    dev_put3(pts + 0x10, to);
+    args[0] = pts;
+    args[1] = (uint32_t)from_room;
+    args[2] = pts + 0x10;
+    args[3] = 0;
+    room = (int)dev_guest_call(A->room_walk, pts, args, 4);
     return room >= 0 && room < 0x10000 ? room : -1;
 }
 
@@ -570,6 +612,31 @@ void ts2_dev_sweep(void (*sweep)(void))
     }
 }
 
+/* ray(room, start, delta, infinite, hit, normal, room_out, mask, first,
+ * ignore) returns the object hit. An enemy decides it can see its target
+ * when its sight ray hits the target itself: under invisibility, those
+ * rays (by their return addresses) hit nothing when they hit the player.
+ * Bullets and everything else are left alone. */
+void ts2_dev_ray(void (*ray)(void))
+{
+    uint32_t ret, c;
+    int i;
+
+    if (!D.invisible) {
+        ray();
+        return;
+    }
+    ret = DEV_MEM32(g_esp);
+    ray();
+    for (i = 0; i < 8 && A->sight_returns[i]; i++)
+        if (A->sight_returns[i] == ret) {
+            c = dev_chr(dev_player());
+            if (c && g_eax == c)
+                g_eax = 0;
+            return;
+        }
+}
+
 /* look_at(dst, eye x y z, forward x y z, up x y z), all by value: at the
  * camera update's call, the free camera's eye and forward instead, and the
  * room drawing starts from walked to from where it was found last. */
@@ -602,50 +669,42 @@ void ts2_dev_look_at(void (*look_at)(void))
 
 /* ── once a frame ──────────────────────────────────────────── */
 
-static void dev_configure(void)
-{
-    const char *v;
+/* What a key (or a step of ts2_dev_seq) does. */
+enum {
+    ACT_READOUT, ACT_GOD, ACT_AMMO, ACT_UNLOCK, ACT_SAVE, ACT_LOAD,
+    ACT_FREECAM, ACT_NOCLIP, ACT_FREEZE, ACT_STEP, ACT_INVISIBLE, ACT_COUNT
+};
 
-    D.configured = 1;
-    D.keys = recomp_config_bool("RECOMP_TS2_DEV", "ts2_dev", 0);
-    D.god = recomp_config_bool("RECOMP_TS2_GOD", "ts2_god", 0);
-    D.ammo = recomp_config_bool("RECOMP_TS2_INFINITE_AMMO", "ts2_infinite_ammo", 0);
-    D.unlock = recomp_config_bool("RECOMP_TS2_UNLOCK_ALL", "ts2_unlock_all", 0);
-    D.readout = recomp_config_bool("RECOMP_TS2_READOUT", "ts2_readout", 0);
-    v = recomp_config_lookup("RECOMP_TS2_TELEPORT", "ts2_teleport");
-    if (v && *v)
-        D.start_tp_pending = dev_parse_spot(v, D.start_tp, &D.start_tp_angles);
-    if (D.keys || D.god || D.ammo || D.unlock || D.readout || D.start_tp_pending)
-        fprintf(stderr, "[TS2-DEV] keys %s, god %d, infinite ammo %d, unlock all %d, "
-                "readout %d%s (src/ts2_devtools.c)\n",
-                D.keys ? "on (F1-F8, F12)" : "off", D.god, D.ammo, D.unlock, D.readout,
-                D.start_tp_pending ? ", teleport at the first level" : "");
-}
+static const char *const k_dev_actions[ACT_COUNT] = {
+    "readout", "god", "ammo", "unlock", "save", "load",
+    "freecam", "noclip", "freeze", "step", "invisible",
+};
 
-static void dev_keys(uint32_t p)
+static void dev_action(int act, uint32_t p)
 {
     float v[5];
 
-    if (dev_pressed(VK_F1_)) {
+    switch (act) {
+    case ACT_READOUT:
         D.readout = !D.readout;
         dev_say("readout %s", D.readout ? "on" : "off");
-    }
-    if (dev_pressed(VK_F2_)) {
+        break;
+    case ACT_GOD:
         D.god = !D.god;
         dev_say(A->god ? "god mode %s" : "god mode: not found in this release",
                 D.god ? "ON" : "off");
-    }
-    if (dev_pressed(VK_F3_)) {
+        break;
+    case ACT_AMMO:
         D.ammo = !D.ammo;
         dev_say(A->infinite_ammo ? "infinite ammo %s" : "infinite ammo: not found",
                 D.ammo ? "ON" : "off");
-    }
-    if (dev_pressed(VK_F4_)) {
+        break;
+    case ACT_UNLOCK:
         D.unlock = !D.unlock;
         dev_say(A->unlock_all ? "unlock everything %s" : "unlock everything: not found",
                 D.unlock ? "ON" : "off");
-    }
-    if (dev_pressed(VK_F5_)) {
+        break;
+    case ACT_SAVE:
         if (p && dev_in_level()) {
             v[0] = DEV_MEMF(p + TS2_P_POS);
             v[1] = DEV_MEMF(p + TS2_P_POS + 4);
@@ -659,16 +718,16 @@ static void dev_keys(uint32_t p)
         } else {
             dev_say("save position: not in a level");
         }
-    }
-    if (dev_pressed(VK_F6_)) {
+        break;
+    case ACT_LOAD:
         if (p && dev_in_level() && dev_position_load(DEV_MEM32(A->level_id), v)) {
             dev_teleport(v, 1);
             dev_say("back to the saved position");
         } else {
             dev_say("no saved position for this level");
         }
-    }
-    if (dev_pressed(VK_F7_)) {
+        break;
+    case ACT_FREECAM:
         if (D.freecam) {
             D.freecam = 0;
             xbox_InputWithhold(0, 0);
@@ -680,8 +739,8 @@ static void dev_keys(uint32_t p)
             xbox_InputWithhold(0, 1);
             dev_say("free camera ON");
         }
-    }
-    if (dev_pressed(VK_F8_)) {
+        break;
+    case ACT_NOCLIP:
         if (D.noclip) {
             D.noclip = 0;
             D.god_hold = 300;
@@ -693,23 +752,190 @@ static void dev_keys(uint32_t p)
             D.noclip = 1;
             dev_say("noclip ON");
         }
-    }
-    if (dev_pressed(VK_F12_) | dev_pressed(VK_PAUSE_)) {
-        if (!A->pause)
+        break;
+    case ACT_FREEZE:
+        if (!A->pause) {
             dev_say("stop the clock: not found in this release");
-        else {
+        } else {
             dev_freeze(!D.frozen);
             dev_say(D.frozen ? "clock STOPPED (Page Down: one frame)" : "clock running");
         }
+        break;
+    case ACT_STEP:
+        if (D.frozen)
+            D.step = 1;
+        break;
+    case ACT_INVISIBLE:
+        D.invisible = !D.invisible;
+        dev_say(A->sight_returns[0] ? "invisible to enemies %s" : "invisible: not found",
+                D.invisible ? "ON" : "off");
+        break;
     }
-    if (dev_pressed(VK_NEXT_) && D.frozen)
-        D.step = 1;
+}
+
+static void dev_keys(uint32_t p)
+{
+    static const struct { int vk, act; } keys[] = {
+        { VK_F1_, ACT_READOUT }, { VK_F2_, ACT_GOD },     { VK_F3_, ACT_AMMO },
+        { VK_F4_, ACT_INVISIBLE }, { VK_HOME_, ACT_UNLOCK },
+        { VK_F5_, ACT_SAVE },    { VK_F6_, ACT_LOAD },
+        { VK_F7_, ACT_FREECAM }, { VK_F8_, ACT_NOCLIP },  { VK_F12_, ACT_FREEZE },
+        { VK_PAUSE_, ACT_FREEZE }, { VK_NEXT_, ACT_STEP },
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof keys / sizeof keys[0]; i++)
+        if (dev_pressed(keys[i].vk))
+            dev_action(keys[i].act, p);
+}
+
+/* ts2_dev_seq = "<frame>:<action>,...": the keys' actions at given frames,
+ * counted from the first present, for scripted runs (which cannot press a
+ * key: their window is never in front). */
+static struct { unsigned long frame; int act; } g_dev_seq[64];
+static int g_dev_seq_n, g_dev_seq_next;
+static unsigned long g_dev_frames;
+
+static void dev_seq_parse(const char *s)
+{
+    while (s && *s && g_dev_seq_n < 64) {
+        char name[16];
+        unsigned long frame;
+        int len = 0, a;
+
+        if (sscanf(s, "%lu:%15[a-z]%n", &frame, name, &len) < 2 || !len)
+            break;
+        for (a = 0; a < ACT_COUNT; a++)
+            if (!strcmp(name, k_dev_actions[a]))
+                break;
+        if (a < ACT_COUNT) {
+            g_dev_seq[g_dev_seq_n].frame = frame;
+            g_dev_seq[g_dev_seq_n].act = a;
+            g_dev_seq_n++;
+        } else {
+            fprintf(stderr, "[TS2-DEV] ts2_dev_seq: no action \"%s\"\n", name);
+        }
+        s += len;
+        if (*s == ',')
+            s++;
+    }
+}
+
+static void dev_seq_run(uint32_t p)
+{
+    while (g_dev_seq_next < g_dev_seq_n && g_dev_seq[g_dev_seq_next].frame <= g_dev_frames) {
+        fprintf(stderr, "[TS2-DEV] frame %lu: %s\n", g_dev_frames,
+                k_dev_actions[g_dev_seq[g_dev_seq_next].act]);
+        dev_action(g_dev_seq[g_dev_seq_next].act, p);
+        g_dev_seq_next++;
+    }
+}
+
+static void dev_configure(void)
+{
+    const char *v;
+
+    D.configured = 1;
+    D.keys = recomp_config_bool("RECOMP_TS2_DEV", "ts2_dev", 0);
+    D.god = recomp_config_bool("RECOMP_TS2_GOD", "ts2_god", 0);
+    D.ammo = recomp_config_bool("RECOMP_TS2_INFINITE_AMMO", "ts2_infinite_ammo", 0);
+    D.unlock = recomp_config_bool("RECOMP_TS2_UNLOCK_ALL", "ts2_unlock_all", 0);
+    D.readout = recomp_config_bool("RECOMP_TS2_READOUT", "ts2_readout", 0);
+    D.invisible = recomp_config_bool("RECOMP_TS2_INVISIBLE", "ts2_invisible", 0);
+    dev_seq_parse(recomp_config_lookup("RECOMP_TS2_DEV_SEQ", "ts2_dev_seq"));
+    v = recomp_config_lookup("RECOMP_TS2_TELEPORT", "ts2_teleport");
+    if (v && *v)
+        D.start_tp_pending = dev_parse_spot(v, D.start_tp, &D.start_tp_angles);
+    if (D.keys || D.god || D.ammo || D.unlock || D.readout || D.invisible ||
+        D.start_tp_pending || g_dev_seq_n)
+        fprintf(stderr, "[TS2-DEV] keys %s, god %d, infinite ammo %d, unlock all %d, "
+                "invisible %d, readout %d%s (src/ts2_devtools.c)\n",
+                D.keys ? "on (F1-F8, F12, Home, Page Down)" : "off", D.god, D.ammo,
+                D.unlock, D.invisible, D.readout,
+                D.start_tp_pending ? ", teleport at the first level" : "");
+}
+
+/* What the middle of the view is on: the game's own ray, from the eye (the
+ * free camera's when it is on) 1000 units along the view, past the
+ * player's own character. Writes a line, or nothing without a ray. */
+static void dev_aim(uint32_t p, char *out, size_t n)
+{
+    uint32_t ctx = dev_context(), pts, args[10], obj, cls, model, name;
+    float eye[3], dir[3], hit[3];
+    char model_name[40];
+    int i, room;
+
+    out[0] = 0;
+    if (!A->ray || !ctx)
+        return;
+    if (D.freecam) {
+        memcpy(eye, D.fc_eye, sizeof eye);
+        dev_freecam_forward(dir);
+        room = D.fc_room;
+    } else {
+        for (i = 0; i < 3; i++) {
+            eye[i] = DEV_MEMF(ctx + TS2_CTX_EYE + 4u * (uint32_t)i);
+            dir[i] = DEV_MEMF(ctx + TS2_CTX_FORWARD + 4u * (uint32_t)i);
+        }
+        room = (int)DEV_MEM32(ctx + TS2_CTX_ROOM);
+    }
+    dev_normalize(dir);
+    for (i = 0; i < 3; i++)
+        dir[i] *= 1000.0f;
+    pts = dev_scratch(0x50);
+    dev_put3(pts, eye);
+    dev_put3(pts + 0x10, dir);
+    hit[0] = hit[1] = hit[2] = 0.0f;
+    dev_put3(pts + 0x20, hit);
+    DEV_MEM32(pts + 0x40) = (uint32_t)-1;
+    args[0] = (uint32_t)room;
+    args[1] = pts;                      /* start */
+    args[2] = pts + 0x10;               /* delta */
+    args[3] = 0;                        /* the segment, not a line */
+    args[4] = pts + 0x20;               /* hit */
+    args[5] = pts + 0x30;               /* normal */
+    args[6] = pts + 0x40;               /* room it ended in */
+    args[7] = 0;                        /* every class */
+    args[8] = 0;                        /* the nearest hit */
+    args[9] = dev_chr(p);               /* not the player */
+    obj = dev_guest_call(A->ray, pts, args, 10);
+    for (i = 0; i < 3; i++)
+        hit[i] = DEV_MEMF(pts + 0x20 + 4u * (uint32_t)i);
+    if (!dev_ptr_ok(obj)) {
+        snprintf(out, n, "aim: nothing within 1000");
+        return;
+    }
+    cls = DEV_MEM32(obj + TS2_O_CLASS);
+    model = DEV_MEM32(obj + TS2_O_MODEL);
+    model_name[0] = 0;
+    if (A->object_list && model < 2048) {
+        name = DEV_MEM32(A->object_list + model * 0x24u);
+        for (i = 0; dev_ptr_ok(name) && i < (int)sizeof model_name - 1; i++) {
+            char ch = (char)DEV_MEM8(name + (uint32_t)i);
+
+            if (ch < 32 || ch > 126)
+                break;
+            model_name[i] = ch;
+            model_name[i + 1] = 0;
+        }
+    }
+    snprintf(out, n, "aim %.2f %.2f %.2f  %.1f away  %s %s",
+             hit[0], hit[1], hit[2],
+             sqrtf((hit[0] - eye[0]) * (hit[0] - eye[0]) + (hit[1] - eye[1]) * (hit[1] - eye[1]) +
+                   (hit[2] - eye[2]) * (hit[2] - eye[2])),
+             cls == 2 ? "room" : cls == 4 ? "door" : cls == 8 ? "character" :
+             cls == 0x40 ? "pickup" : "object",
+             cls == 2 ? "" : model_name);
+    if (cls != 2 && cls != 4 && cls != 8 && cls != 0x40) {
+        size_t k = strlen(out);
+        snprintf(out + k, n - k, " (class 0x%X)", (unsigned)cls);
+    }
 }
 
 /* The overlay's line: the readout, then the last thing a key did. */
 static void dev_show(uint32_t p)
 {
-    char line[96];
+    char line[400];
     size_t n = 0;
 
     line[0] = 0;
@@ -722,10 +948,19 @@ static void dev_show(uint32_t p)
         for (i = 0; i < 3; i++)
             pos[i] = at ? at[i] : DEV_MEMF(p + TS2_P_POS + 4u * (uint32_t)i);
         n = (size_t)snprintf(line, sizeof line, "%s %.2f %.2f %.2f  yaw %.0f pitch %.0f  "
-                             "room %d  hp %.0f", at ? "cam" : "pos", pos[0], pos[1], pos[2],
+                             "room %d  hp %.0f\n", at ? "cam" : "pos", pos[0], pos[1], pos[2],
                              DEV_MEMF(p + TS2_P_YAW), DEV_MEMF(p + TS2_P_PITCH),
                              at ? D.fc_room : (int)DEV_MEM32(p + TS2_P_ROOM),
                              c ? DEV_MEMF(c + TS2_C_HEALTH) : 0.0f);
+        if (n < sizeof line)
+            dev_aim(p, line + n, sizeof line - n);
+        n = strlen(line);
+        if (n < sizeof line)
+            n += (size_t)snprintf(line + n, sizeof line - n, "%s%s%s%s%s%s",
+                                  D.god || D.noclip ? "\nGOD " : "\n",
+                                  D.ammo ? "AMMO " : "", D.invisible ? "INVISIBLE " : "",
+                                  D.noclip ? "NOCLIP " : "", D.freecam ? "FREECAM " : "",
+                                  D.frozen ? "STOPPED" : "");
     } else if (D.readout) {
         n = (size_t)snprintf(line, sizeof line, "level %u",
                              A->level_id ? (unsigned)DEV_MEM32(A->level_id) : 0u);
@@ -734,10 +969,18 @@ static void dev_show(uint32_t p)
         n = sizeof line - 1;
     if (D.msg_frames > 0) {
         D.msg_frames--;
-        snprintf(line + n, sizeof line - n, "%s%s", n ? "  |  " : "", D.msg);
+        snprintf(line + n, sizeof line - n, "%s%s", n ? "\n" : "", D.msg);
     }
     if (line[0])
         xbox_D3D8Notice(line, 250);
+    /* The readout in the log too, once a second, for scripted runs. */
+    if (D.readout && line[0] && g_dev_frames % 60 == 0) {
+        char *nl;
+
+        while ((nl = strchr(line, '\n')) != NULL)
+            *nl = '|';
+        fprintf(stderr, "[TS2-DEV] frame %lu: %s\n", g_dev_frames, line);
+    }
 }
 
 void ts2_dev_frame(void)
@@ -747,8 +990,10 @@ void ts2_dev_frame(void)
     if (!D.configured)
         dev_configure();
     p = dev_player();
+    g_dev_frames++;
     if (D.keys)
         dev_keys(p);
+    dev_seq_run(p);
 
     /* A level gone (the front end, a load): its tools go with it. */
     if (!dev_in_level() || !p) {

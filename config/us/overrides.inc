@@ -50,6 +50,14 @@ void sub_001A5040(void) { ts2_draw_world(sub_001A5040_gen, 0x004B2F60u); }
 extern void sub_00121710_gen(void);
 void sub_00121710(void) { ts2_dev_sweep(sub_00121710_gen); }
 
+/* ray is sub_00020160(room, start, delta, infinite, hit, normal, room_out,
+ * class_mask, first_hit, ignore): the game's line-of-sight and bullet test,
+ * returning the object hit. Wrapped for the debugging tools' invisibility,
+ * which makes the enemies' sight rays miss the player (the call sites are
+ * in config/us/devtools.inc). */
+extern void sub_00020160_gen(void);
+void sub_00020160(void) { ts2_dev_ray(sub_00020160_gen); }
+
 /* look_at is sub_000E67F0(dst, eye xyz, forward xyz, up xyz), cdecl, all
  * by value: the camera update sub_00035930 builds the view [ctx+0x208] with
  * it at 0x00036D47 (found with RECOMP_WATCH_WRITE on the view matrix).
