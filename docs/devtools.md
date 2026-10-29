@@ -206,7 +206,10 @@ RECOMP_MODS=private/mods/allguns ./split2_recomp     # ';' between mods on Windo
 ```
 
 The game still loads a gun only when it is given or picked up, so nothing
-is loaded up front. The mod is the game's own files: keep it in `private/`
+is loaded up front. It loads a model's textures only while a level loads,
+which a gun given mid-level misses, so while a level plays the tools load a
+model's textures as the model asks for them (a texture already loaded,
+which is every other one, is left as it is). The mod is the game's own files: keep it in `private/`
 and never commit or share it.
 
 Not possible: a full save state. The game is native code running on real

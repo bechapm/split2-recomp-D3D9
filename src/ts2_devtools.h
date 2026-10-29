@@ -72,6 +72,10 @@ typedef struct Ts2DevAddrs {
     void (*pak_find_p4)(void);
     void (*pak_find_p8)(void);
     uint32_t pak_current;
+    /* texture_load(id, a, b), cdecl: the texture with that id, loaded now if
+     * it is not yet (the level-load pass's call, which run-time code makes
+     * too). */
+    void (*texture_load)(void);
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the
@@ -138,5 +142,13 @@ void ts2_dev_hud(void (*hud)(void));
 void ts2_dev_aware_set(void (*set)(void));
 void ts2_dev_aware_get(void (*get)(void));
 void ts2_dev_target_check(void (*check)(void));
+
+/* A model's texture request (wraps the release's request(id, a, b), which
+ * only queues the texture for the level-load pass): while a level is
+ * playing, outside that pass (wrapped too, as level_load), the texture is
+ * loaded at once, so a gun first drawn mid-level -- one the tools gave from
+ * another level's data -- has its textures. */
+void ts2_dev_texture_request(void (*request)(void));
+void ts2_dev_level_load(void (*load)(void));
 
 #endif

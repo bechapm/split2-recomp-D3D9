@@ -22,6 +22,8 @@ extern void sub_0011FF10(void);
 extern void sub_001495C0(void);
 extern void sub_000862A0(void);
 extern void sub_00086040(void);
+/* texture_load sub_001B7E60, below. */
+extern void sub_001B7E60(void);
 
 static const Ts2DevAddrs k_ts2_dev = {
     /* player_base: [0x00497028] is the local player records, 0xD3C each;
@@ -130,4 +132,10 @@ static const Ts2DevAddrs k_ts2_dev = {
     0x002D89C4,
     sub_001495C0,
     sub_000862A0, sub_00086040, 0x003585F0,
+    /* texture_load: sub_001B7E60(id, a, b) returns the texture when its id
+     * is in the loaded table [0x348A2C] (0x34 each, id at +0x1C), else loads
+     * textures/<id>.xbt (the format at 0x29EF8C). The level-load pass
+     * sub_00149D20 calls it for each queued request, and so do run-time
+     * callers (sub_0012C7C0, sub_000F8F70, sub_000F91D0) (code). */
+    sub_001B7E60,
 };

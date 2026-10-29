@@ -812,6 +812,36 @@ void ts2_dev_target_check(void (*check)(void))
     check();
 }
 
+/* level_load() is the level-load pass that loads every requested texture;
+ * request(id, a, b) only queues one for it. Outside the pass, while a level
+ * plays and the tools are on, a request is also loaded at once: the
+ * texture is returned as it is when it is loaded already, so only a model
+ * the level did not carry (a gun given from another level's data) loads
+ * anything. */
+static int g_dev_level_loading;
+
+void ts2_dev_level_load(void (*load)(void))
+{
+    g_dev_level_loading++;
+    load();
+    g_dev_level_loading--;
+}
+
+void ts2_dev_texture_request(void (*request)(void))
+{
+    uint32_t args[3];
+
+    if (!D.keys || !A->texture_load || g_dev_level_loading || !dev_in_level()) {
+        request();
+        return;
+    }
+    args[0] = DEV_MEM32(g_esp + 4);
+    args[1] = DEV_MEM32(g_esp + 8);
+    args[2] = DEV_MEM32(g_esp + 12);
+    request();                          /* the game's queue, as ever */
+    dev_guest_call(A->texture_load, dev_scratch(0), args, 3);
+}
+
 /* look_at(dst, eye x y z, forward x y z, up x y z), all by value: at the
  * camera update's call, the free camera's eye and forward instead, and the
  * room drawing starts from walked to from where it was found last. */
