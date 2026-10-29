@@ -20,3 +20,9 @@ private/
 
 # macOS Finder files, at any depth ("./.DS_Store" matched nothing).
 .DS_Store
+
+# RTX Remix testing beside the checkout: frame dumps and screenshots of the
+# game, the save backup, and NVIDIA's runtime. None of it is ours to publish.
+/dumps/
+/remix/
+/udata-backup/
