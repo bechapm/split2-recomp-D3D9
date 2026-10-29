@@ -104,10 +104,12 @@ CMakeLists.txt          the executable and the launcher, on top of xboxrecomp
 scripts/build.py        lift (first time or --relift), then configure and build
 src/main.c              the host entry point, from xboxrecomp/templates/new-game
 src/recomp_manual.c     hand-written overrides of lifted functions, the same for every release
+src/ts2_devtools.c      the debugging tools (god mode, free camera, noclip...; docs/devtools.md)
 config/<region>/        one release's addresses (pal, us):
   seeds.json            function entry points discovery cannot see
   xdk_symbols.json      XDK function names in that XBE (for the D3D8 replacements)
   overrides.inc         the functions recomp_manual.c wraps, by address, and its UI placement table
+  devtools.inc          where src/ts2_devtools.c finds what its tools read and write
   xbe_patches.json      PAL only: changes to the XBE made before the lift (the roster grown)
 game/                   the disc, supplied by the user        (ignored)
 private/                local mod work that is not ours to publish (ignored; docs/modding.md)
