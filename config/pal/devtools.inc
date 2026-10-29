@@ -14,6 +14,7 @@ static const Ts2DevAddrs k_ts2_dev = {
      * sub_000A9740(n) (code; docs/formats/roster.md). */
     0x0035F668, 0x0035F66C, 5,
     0,                  /* pause */
+    0, 0,               /* ticks, time scale */
     0,                  /* context */
     0,                  /* look_at */
     0,                  /* room walk */

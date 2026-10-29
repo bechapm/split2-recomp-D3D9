@@ -39,6 +39,9 @@ static const Ts2DevAddrs k_ts2_dev = {
      * (ticks 0), -1 resuming (one tick, then 0). sub_001AE110(on) is the
      * pause menu's way of setting it (code; measured 0 and 1). */
     0x0040BC58,
+    /* ticks and time scale, which the frame clock sub_001ADF80 writes every
+     * frame (1..3 and the same as a float running, 0 paused; measured). */
+    0x0034889C, 0x003488A4,
     /* context: the camera/render context (code, as in overrides.inc). */
     0x004B2F60,
     /* look_at_return: the camera update sub_00035930 calls look_at

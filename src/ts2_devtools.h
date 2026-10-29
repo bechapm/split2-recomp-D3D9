@@ -22,6 +22,8 @@ typedef struct Ts2DevAddrs {
     uint32_t unlock_override; /* bytes: per-kind unlock overrides, unlock_override_count of them */
     uint32_t unlock_override_count;
     uint32_t pause;           /* int: the game's pause: 0 running, >0 paused, -1 resuming */
+    uint32_t ticks;           /* dword: ticks the game runs this frame (the frame clock's) */
+    uint32_t time_scale;      /* float: the same, as the time scale */
     uint32_t context;         /* dword: the camera/render context */
     uint32_t look_at_return;  /* the camera update's call of look_at: its return address */
     /* room_walk(float *from, int from_room, float *to, 0): the room that
@@ -68,6 +70,10 @@ void ts2_dev_frame(void);
  * noclip and a teleport put `to` where they want it instead. Every one of
  * the player's movement modes goes through it. */
 void ts2_dev_sweep(void (*sweep)(void));
+
+/* The game's frame clock (wraps the release's clock, which decides how many
+ * ticks the frame runs): the game's speed scales the count. */
+void ts2_dev_clock(void (*clock)(void));
 
 /* The ray test (wraps the release's ray): under invisibility, an enemy's
  * sight ray that reaches the player reaches nothing. */

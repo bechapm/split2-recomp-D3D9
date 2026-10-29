@@ -50,6 +50,14 @@ void sub_001A5040(void) { ts2_draw_world(sub_001A5040_gen, 0x004B2F60u); }
 extern void sub_00121710_gen(void);
 void sub_00121710(void) { ts2_dev_sweep(sub_00121710_gen); }
 
+/* clock is sub_001ADF80, the main loop's frame clock (sub_00168E60 calls
+ * it): it sets the ticks the frame runs ([0x0034889C], from the vertical
+ * blanks since the last frame) and the time scale ([0x003488A4]) from the
+ * pause switch [0x0040BC58]. Wrapped for the debugging tools' game speed,
+ * which scales the count after it. */
+extern void sub_001ADF80_gen(void);
+void sub_001ADF80(void) { ts2_dev_clock(sub_001ADF80_gen); }
+
 /* ray is sub_00020160(room, start, delta, infinite, hit, normal, room_out,
  * class_mask, first_hit, ignore): the game's line-of-sight and bullet test,
  * returning the object hit. Wrapped for the debugging tools' invisibility,

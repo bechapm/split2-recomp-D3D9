@@ -4,15 +4,21 @@
  * For setting up a test scene and holding it still: the developers' own
  * god mode and infinite ammo, every unlock, the game's clock stopped (the
  * world holds still and is still drawn), a readout of where the player is,
- * a saved position to come back to, a free camera and noclip. All of it is
- * TS2's: the toolkit only gives keys, a line on its overlay
- * (xbox_D3D8KeyDown, xbox_D3D8Notice) and the pad (xbox_InputWithhold,
- * xbox_InputRead).
+ * a saved position to come back to, a free camera, noclip, the game's
+ * speed and a wireframe view, all from a menu on the overlay. All of it is
+ * TS2's: the toolkit only gives keys, lines on its overlay
+ * (xbox_D3D8KeyDown, xbox_D3D8Notice), the pad (xbox_InputWithhold,
+ * xbox_InputRead) and the wireframe (xbox_D3D8SetWireframe).
  *
- * Off unless asked for. The switches (each a setting in the title's .conf
+ * The menu: F1, or both sticks clicked together (L3+R3), opens and closes
+ * it. Up/down (the D-pad or the arrows) chooses, A or Enter sets, left/right
+ * changes a value (the speed), B or Esc closes. The game reads an idle pad
+ * while it is open.
+ *
+ * Every tool starts off. The switches (each a setting in the title's .conf
  * or an environment variable, read once at start-up):
  *
- *   ts2_dev = 1            RECOMP_TS2_DEV          the keys below
+ *   ts2_dev = 0            RECOMP_TS2_DEV          no menu and no keys (on by default)
  *   ts2_god = 1            RECOMP_TS2_GOD          god mode from the start
  *   ts2_infinite_ammo = 1  RECOMP_TS2_INFINITE_AMMO
  *   ts2_unlock_all = 1     RECOMP_TS2_UNLOCK_ALL   every character, level and cheat
@@ -22,23 +28,26 @@
  *                          game's own ray: point, distance, room, door,
  *                          character or pickup and its model) and which
  *                          tools are on
+ *   ts2_speed = 0.5        RECOMP_TS2_SPEED        the game's speed: 0.25 0.5 1 2 4
  *   ts2_dev_seq = <frame>:<action>,...  RECOMP_TS2_DEV_SEQ
  *                          the keys' actions at given frames (from the first
  *                          present), for scripted runs: readout god ammo
  *                          unlock save load freecam noclip freeze step
- *                          invisible wireframe
+ *                          invisible wireframe faster slower menu
  *   ts2_teleport = x,y,z[,yaw,pitch]  RECOMP_TS2_TELEPORT
  *                          where the player is put once the first level is
  *                          playing: a repeatable spot for a scripted run
  *
- * The keys (with ts2_dev, only while the game's window is in front):
+ * Shortcut keys for the menu's items (only while the game's window is in
+ * front):
  *
- *   F1  readout on/off     F2  god mode        F3  infinite ammo
+ *   F1  the menu           F2  god mode        F3  infinite ammo
  *   F4  invisible to enemies                   Home  unlock everything
  *   F5  save position      F6  back to the saved position
  *   F7  free camera        F8  noclip          F12 or Pause: stop the clock
  *   Page Down: one frame forward while the clock is stopped
  *   End  wireframe (the toolkit's, RECOMP_WIREFRAME)
+ *   - and +  slower and faster
  *
  * Saved positions are kept per level in ts2_positions.txt beside the
  * executable (RECOMP_TS2_POSITIONS names another file), one line each:
@@ -61,6 +70,11 @@
  *     (without the menu): the world stops and goes on being drawn, and the
  *     camera still updates, so the free camera flies through a still
  *     scene. A step resumes it for one tick.
+ *   speed: the frame clock decides each frame how many whole ticks (1/60 s
+ *     each) the game runs, normally 1, more to catch up after a slow frame.
+ *     After it, the count is scaled, with the remainder carried: 2x runs two
+ *     ticks a frame, 0.5x one every other frame. The game only ever runs
+ *     whole ticks, so this is not a way to a higher frame rate.
  *   teleport, noclip: the character sweep, the one function every one of
  *     the player's movement modes moves through, is given the tool's
  *     position as its answer, so the game makes the player's eye, its
@@ -122,11 +136,21 @@ enum {
     VK_F1_ = 0x70, VK_F2_, VK_F3_, VK_F4_, VK_F5_, VK_F6_, VK_F7_, VK_F8_,
     VK_F12_ = 0x7B, VK_PAUSE_ = 0x13, VK_NEXT_ = 0x22, VK_SHIFT_ = 0x10,
     VK_SPACE_ = 0x20, VK_CONTROL_ = 0x11, VK_HOME_ = 0x24, VK_END_ = 0x23,
+    VK_RETURN_ = 0x0D, VK_ESCAPE_ = 0x1B, VK_MINUS_ = 0xBD, VK_PLUS_ = 0xBB,
+    VK_SUBTRACT_ = 0x6D, VK_ADD_ = 0x6B,
     VK_LEFT_ = 0x25, VK_UP_, VK_RIGHT_, VK_DOWN_,
 };
 
 /* XINPUT wButtons, and the analog buttons' order (A B X Y black white L R). */
 enum { PAD_A = 0, PAD_B, PAD_X, PAD_Y, PAD_BLACK, PAD_WHITE, PAD_LT, PAD_RT };
+enum {
+    PADB_UP = 0x01, PADB_DOWN = 0x02, PADB_LEFT = 0x04, PADB_RIGHT = 0x08,
+    PADB_START = 0x10, PADB_BACK = 0x20, PADB_LTHUMB = 0x40, PADB_RTHUMB = 0x80,
+};
+
+static const float k_dev_speeds[] = { 0.25f, 0.5f, 1.0f, 2.0f, 4.0f };
+#define DEV_SPEED_NORMAL 2
+#define DEV_SPEED_COUNT  ((int)(sizeof k_dev_speeds / sizeof k_dev_speeds[0]))
 
 #define TS2_FRAME_SECONDS (1.0f / 60.0f)   /* the game's logic rate */
 
@@ -138,6 +162,10 @@ static struct {
     int  god_written, ammo_written, unlock_written;
     int  frozen, step, freecam, noclip, invisible;
     int  god_hold;                      /* frames god stays on after noclip */
+    int  speed;                         /* index in k_dev_speeds */
+    float speed_carry;                  /* the fraction of a tick not yet run */
+    int  menu, menu_row, menu_held, menu_hold_frames;
+    uint16_t menu_was;                  /* the menu's controls held last frame */
     int  key_was[256];
     char msg[64];
     int  msg_frames;
@@ -327,6 +355,32 @@ static void dev_write_clock(void)
     }
     if ((int32_t)DEV_MEM32(A->pause) <= 0)
         DEV_MEM32(A->pause) = 1;
+}
+
+/* clock() is the game's frame clock: it sets the ticks this frame runs and
+ * the time scale (the same number, as a float), from the vertical blanks
+ * since the last frame and the pause switch. The count is scaled after it,
+ * the remainder carried to the next frame. */
+void ts2_dev_clock(void (*clock)(void))
+{
+    uint32_t ticks, run;
+    float want;
+
+    clock();
+    if (D.speed == DEV_SPEED_NORMAL || !A->ticks || !A->time_scale)
+        return;
+    ticks = DEV_MEM32(A->ticks);
+    if (!ticks || ticks > 8)
+        return;                         /* paused, or not a count */
+    want = (float)ticks * k_dev_speeds[D.speed] + D.speed_carry;
+    run = (uint32_t)want;
+    D.speed_carry = want - (float)run;
+    if (run > 12)
+        run = 12;
+    if (g_eax == ticks)
+        g_eax = run;
+    DEV_MEM32(A->ticks) = run;
+    DEV_MEMF(A->time_scale) = (float)run;
 }
 
 /* ── saved positions ───────────────────────────────────────── */
@@ -676,12 +730,13 @@ void ts2_dev_look_at(void (*look_at)(void))
 enum {
     ACT_READOUT, ACT_GOD, ACT_AMMO, ACT_UNLOCK, ACT_SAVE, ACT_LOAD,
     ACT_FREECAM, ACT_NOCLIP, ACT_FREEZE, ACT_STEP, ACT_INVISIBLE, ACT_WIREFRAME,
-    ACT_COUNT
+    ACT_FASTER, ACT_SLOWER, ACT_MENU, ACT_COUNT
 };
 
 static const char *const k_dev_actions[ACT_COUNT] = {
     "readout", "god", "ammo", "unlock", "save", "load",
     "freecam", "noclip", "freeze", "step", "invisible", "wireframe",
+    "faster", "slower", "menu",
 };
 
 static void dev_action(int act, uint32_t p)
@@ -734,7 +789,7 @@ static void dev_action(int act, uint32_t p)
     case ACT_FREECAM:
         if (D.freecam) {
             D.freecam = 0;
-            xbox_InputWithhold(0, 0);
+            xbox_InputWithhold(0, D.menu);
             dev_say("free camera off");
         } else if (!A->look_at_return) {
             dev_say("free camera: not found in this release");
@@ -769,6 +824,23 @@ static void dev_action(int act, uint32_t p)
         if (D.frozen)
             D.step = 1;
         break;
+    case ACT_FASTER:
+    case ACT_SLOWER:
+        if (!A->ticks) {
+            dev_say("game speed: not found in this release");
+            break;
+        }
+        D.speed += act == ACT_FASTER ? 1 : -1;
+        if (D.speed < 0) D.speed = 0;
+        if (D.speed >= DEV_SPEED_COUNT) D.speed = DEV_SPEED_COUNT - 1;
+        D.speed_carry = 0.0f;
+        dev_say("game speed %gx", (double)k_dev_speeds[D.speed]);
+        break;
+    case ACT_MENU:
+        D.menu = !D.menu;
+        D.menu_was = 0xFFFF;            /* what opened it is not a press in it */
+        xbox_InputWithhold(0, D.menu || D.freecam);
+        break;
     case ACT_WIREFRAME:
         xbox_D3D8SetWireframe(!xbox_D3D8Wireframe());
         dev_say("wireframe %s", xbox_D3D8Wireframe() ? "ON" : "off");
@@ -784,11 +856,13 @@ static void dev_action(int act, uint32_t p)
 static void dev_keys(uint32_t p)
 {
     static const struct { int vk, act; } keys[] = {
-        { VK_F1_, ACT_READOUT }, { VK_F2_, ACT_GOD },     { VK_F3_, ACT_AMMO },
+        { VK_F1_, ACT_MENU },    { VK_F2_, ACT_GOD },     { VK_F3_, ACT_AMMO },
         { VK_F4_, ACT_INVISIBLE }, { VK_HOME_, ACT_UNLOCK },
         { VK_F5_, ACT_SAVE },    { VK_F6_, ACT_LOAD },
         { VK_F7_, ACT_FREECAM }, { VK_F8_, ACT_NOCLIP },  { VK_F12_, ACT_FREEZE },
         { VK_PAUSE_, ACT_FREEZE }, { VK_NEXT_, ACT_STEP }, { VK_END_, ACT_WIREFRAME },
+        { VK_MINUS_, ACT_SLOWER }, { VK_SUBTRACT_, ACT_SLOWER },
+        { VK_PLUS_, ACT_FASTER },  { VK_ADD_, ACT_FASTER },
     };
     size_t i;
 
@@ -844,7 +918,19 @@ static void dev_configure(void)
     const char *v;
 
     D.configured = 1;
-    D.keys = recomp_config_bool("RECOMP_TS2_DEV", "ts2_dev", 0);
+    D.keys = recomp_config_bool("RECOMP_TS2_DEV", "ts2_dev", 1);
+    D.speed = DEV_SPEED_NORMAL;
+    v = recomp_config_lookup("RECOMP_TS2_SPEED", "ts2_speed");
+    if (v && *v) {
+        double want = atof(v);
+        int i;
+
+        for (i = 0; i < DEV_SPEED_COUNT; i++)
+            if (want > 0.0 && (float)want <= k_dev_speeds[i] * 1.01f) {
+                D.speed = i;
+                break;
+            }
+    }
     D.god = recomp_config_bool("RECOMP_TS2_GOD", "ts2_god", 0);
     D.ammo = recomp_config_bool("RECOMP_TS2_INFINITE_AMMO", "ts2_infinite_ammo", 0);
     D.unlock = recomp_config_bool("RECOMP_TS2_UNLOCK_ALL", "ts2_unlock_all", 0);
@@ -854,13 +940,12 @@ static void dev_configure(void)
     v = recomp_config_lookup("RECOMP_TS2_TELEPORT", "ts2_teleport");
     if (v && *v)
         D.start_tp_pending = dev_parse_spot(v, D.start_tp, &D.start_tp_angles);
-    if (D.keys || D.god || D.ammo || D.unlock || D.readout || D.invisible ||
-        D.start_tp_pending || g_dev_seq_n)
-        fprintf(stderr, "[TS2-DEV] keys %s, god %d, infinite ammo %d, unlock all %d, "
-                "invisible %d, readout %d%s (src/ts2_devtools.c)\n",
-                D.keys ? "on (F1-F8, F12, Home, Page Down)" : "off", D.god, D.ammo,
-                D.unlock, D.invisible, D.readout,
-                D.start_tp_pending ? ", teleport at the first level" : "");
+    fprintf(stderr, "[TS2-DEV] menu and keys %s (F1 or L3+R3: the menu), god %d, "
+            "infinite ammo %d, unlock all %d, invisible %d, readout %d, speed %gx%s "
+            "(src/ts2_devtools.c, docs/devtools.md)\n",
+            D.keys ? "on" : "off (ts2_dev = 0)", D.god, D.ammo, D.unlock, D.invisible,
+            D.readout, (double)k_dev_speeds[D.speed],
+            D.start_tp_pending ? ", teleport at the first level" : "");
 }
 
 /* What the middle of the view is on: the game's own ray, from the eye (the
@@ -940,14 +1025,127 @@ static void dev_aim(uint32_t p, char *out, size_t n)
     }
 }
 
+/* ── the menu ──────────────────────────────────────────────── */
+
+/* Its rows: what each says, and what A does on it (left/right too, for a
+ * row with a value). */
+static const struct { const char *label; int act, left, right; } k_dev_menu[] = {
+    { "Readout",                  ACT_READOUT,   -1, -1 },
+    { "God mode",                 ACT_GOD,       -1, -1 },
+    { "Infinite ammo",            ACT_AMMO,      -1, -1 },
+    { "Invisible to enemies",     ACT_INVISIBLE, -1, -1 },
+    { "Unlock everything",        ACT_UNLOCK,    -1, -1 },
+    { "Game speed",               ACT_FASTER,    ACT_SLOWER, ACT_FASTER },
+    { "Stop the clock",           ACT_FREEZE,    -1, -1 },
+    { "One frame forward",        ACT_STEP,      -1, -1 },
+    { "Free camera",              ACT_FREECAM,   -1, -1 },
+    { "Noclip",                   ACT_NOCLIP,    -1, -1 },
+    { "Save position",            ACT_SAVE,      -1, -1 },
+    { "Back to saved position",   ACT_LOAD,      -1, -1 },
+    { "Wireframe",                ACT_WIREFRAME, -1, -1 },
+};
+#define DEV_MENU_ROWS ((int)(sizeof k_dev_menu / sizeof k_dev_menu[0]))
+
+static const char *dev_menu_value(int row, char *buf, size_t n)
+{
+    int on = -1;
+
+    switch (k_dev_menu[row].act) {
+    case ACT_READOUT:   on = D.readout; break;
+    case ACT_GOD:       on = D.god; break;
+    case ACT_AMMO:      on = D.ammo; break;
+    case ACT_INVISIBLE: on = D.invisible; break;
+    case ACT_UNLOCK:    on = D.unlock; break;
+    case ACT_FREEZE:    on = D.frozen; break;
+    case ACT_FREECAM:   on = D.freecam; break;
+    case ACT_NOCLIP:    on = D.noclip; break;
+    case ACT_WIREFRAME: on = xbox_D3D8Wireframe(); break;
+    case ACT_FASTER:
+        snprintf(buf, n, "< %gx >", (double)k_dev_speeds[D.speed]);
+        return buf;
+    default:
+        return "";
+    }
+    return on ? "ON" : "off";
+}
+
+/* The pad (the keyboard's arrows, Enter and Esc too) while the menu is
+ * open: a press acts once, and a held direction repeats after a moment. */
+static void dev_menu_input(uint32_t p)
+{
+    uint16_t buttons = 0, now, pressed;
+    uint8_t analog[8] = { 0 };
+    int16_t sticks[4] = { 0 };
+    int row = D.menu_row;
+
+    xbox_InputRead(0, &buttons, analog, sticks);
+    now = buttons & (PADB_UP | PADB_DOWN | PADB_LEFT | PADB_RIGHT | PADB_START | PADB_BACK);
+    if (analog[PAD_A] > 64 || xbox_D3D8KeyDown(VK_RETURN_)) now |= 0x100;
+    if (analog[PAD_B] > 64 || xbox_D3D8KeyDown(VK_ESCAPE_)) now |= 0x200;
+    if (xbox_D3D8KeyDown(VK_UP_))    now |= PADB_UP;
+    if (xbox_D3D8KeyDown(VK_DOWN_))  now |= PADB_DOWN;
+    if (xbox_D3D8KeyDown(VK_LEFT_))  now |= PADB_LEFT;
+    if (xbox_D3D8KeyDown(VK_RIGHT_)) now |= PADB_RIGHT;
+    if (sticks[1] > 16000)  now |= PADB_UP;
+    if (sticks[1] < -16000) now |= PADB_DOWN;
+
+    pressed = (uint16_t)(now & ~D.menu_was);
+    /* a held direction: again after 18 frames, then every 6 */
+    if (now & (PADB_UP | PADB_DOWN | PADB_LEFT | PADB_RIGHT) & D.menu_was) {
+        if (++D.menu_hold_frames >= 18 && (D.menu_hold_frames - 18) % 6 == 0)
+            pressed |= now & (PADB_UP | PADB_DOWN | PADB_LEFT | PADB_RIGHT);
+    } else {
+        D.menu_hold_frames = 0;
+    }
+    D.menu_was = now;
+
+    if (pressed & PADB_UP)
+        row = (row + DEV_MENU_ROWS - 1) % DEV_MENU_ROWS;
+    if (pressed & PADB_DOWN)
+        row = (row + 1) % DEV_MENU_ROWS;
+    D.menu_row = row;
+    if ((pressed & PADB_LEFT) && k_dev_menu[row].left >= 0)
+        dev_action(k_dev_menu[row].left, p);
+    if ((pressed & PADB_RIGHT) && k_dev_menu[row].right >= 0)
+        dev_action(k_dev_menu[row].right, p);
+    if (pressed & (0x100 | PADB_START)) {
+        int act = k_dev_menu[row].act;
+
+        dev_action(act, p);
+        /* The free camera and noclip are driven by the pad: close the menu
+         * so it reaches them. */
+        if ((act == ACT_FREECAM && D.freecam) || (act == ACT_NOCLIP && D.noclip))
+            dev_action(ACT_MENU, p);
+    }
+    if (pressed & (0x200 | PADB_BACK))
+        dev_action(ACT_MENU, p);
+}
+
+static size_t dev_menu_text(char *out, size_t n)
+{
+    size_t k;
+    int i;
+    char buf[32];
+
+    k = (size_t)snprintf(out, n, "TS2 DEV MENU\n");
+    for (i = 0; i < DEV_MENU_ROWS && k < n; i++)
+        k += (size_t)snprintf(out + k, n - k, "%s %-24s %s\n", i == D.menu_row ? ">" : " ",
+                              k_dev_menu[i].label, dev_menu_value(i, buf, sizeof buf));
+    if (k < n)
+        k += (size_t)snprintf(out + k, n - k, "A/Enter set  left/right change  B/Esc close");
+    return k < n ? k : n - 1;
+}
+
 /* The overlay's line: the readout, then the last thing a key did. */
 static void dev_show(uint32_t p)
 {
-    char line[400];
+    char line[1200];
     size_t n = 0;
 
     line[0] = 0;
-    if (D.readout && p && dev_in_level()) {
+    if (D.menu) {
+        n = dev_menu_text(line, sizeof line);
+    } else if (D.readout && p && dev_in_level()) {
         uint32_t c = dev_chr(p);
         const float *at = D.freecam ? D.fc_eye : NULL;
         float pos[3];
@@ -982,7 +1180,7 @@ static void dev_show(uint32_t p)
     if (line[0])
         xbox_D3D8Notice(line, 250);
     /* The readout in the log too, once a second, for scripted runs. */
-    if (D.readout && line[0] && g_dev_frames % 60 == 0) {
+    if (D.readout && !D.menu && line[0] && g_dev_frames % 60 == 0) {
         char *nl;
 
         while ((nl = strchr(line, '\n')) != NULL)
@@ -999,15 +1197,28 @@ void ts2_dev_frame(void)
         dev_configure();
     p = dev_player();
     g_dev_frames++;
-    if (D.keys)
+    if (D.keys) {
+        uint16_t buttons = 0;
+        static int thumbs_were;
+        int thumbs;
+
+        /* L3+R3 opens and closes the menu from the pad. */
+        xbox_InputRead(0, &buttons, NULL, NULL);
+        thumbs = (buttons & (PADB_LTHUMB | PADB_RTHUMB)) == (PADB_LTHUMB | PADB_RTHUMB);
+        if (thumbs && !thumbs_were)
+            dev_action(ACT_MENU, p);
+        thumbs_were = thumbs;
         dev_keys(p);
+        if (D.menu)
+            dev_menu_input(p);
+    }
     dev_seq_run(p);
 
     /* A level gone (the front end, a load): its tools go with it. */
     if (!dev_in_level() || !p) {
         if (D.freecam) {
             D.freecam = 0;
-            xbox_InputWithhold(0, 0);
+            xbox_InputWithhold(0, D.menu);
         }
         D.noclip = 0;
         D.tp_sweeps = 0;
@@ -1019,9 +1230,9 @@ void ts2_dev_frame(void)
 
     dev_write_switches();
     dev_write_clock();
-    if (D.freecam)
+    if (D.freecam && !D.menu)
         dev_freecam_step();
-    if (D.noclip && p)
+    if (D.noclip && p && !D.menu)
         dev_noclip_step(p);
     dev_show(p);
 }
