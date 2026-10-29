@@ -467,6 +467,7 @@ extern float xbox_D3D8ClaimHorPlus(void);
 extern void  xbox_D3D8SetWideFrames(int wide);
 
 #define TS2_MEMF(a) (*(volatile float *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
+#define TS2_MEM32(a) (*(volatile uint32_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 
 /* The factor to multiply the camera's aspect by: 1 when no wider view is
  * wanted, 4/3 for the usual Hor+ 0.75. Claiming it stops the toolkit
@@ -484,7 +485,44 @@ static float ts2_camera_widen(void)
 }
 
 /* What the frame now being drawn has run, for the choice below. */
-static int g_ts2_frame_camera, g_ts2_frame_front_end;
+static int g_ts2_frame_camera, g_ts2_frame_front_end, g_ts2_frame_world;
+
+/*
+ * The camera for RTX Remix (the toolkit's D3D9 renderer, RECOMP_D3D8_BACKEND
+ * =d3d9). Remix follows each draw back into the world through the VIEW
+ * transform; without the game's own it takes the camera's space for the
+ * world, which turns with the camera, and nothing it accumulates or
+ * replaces stays put.
+ *
+ * draw_world draws the level's own meshes. It reads the render context from
+ * a global, hands the matrix at context+0x208 -- a pointer, flipped between
+ * two copies as the camera moves -- to the vertex constants as the model-
+ * view (c64-c67, transposed), and draws: the level is modelled in world
+ * space, so that matrix is the view itself. It is already D3D's row-vector
+ * VIEW (translation in the last row), so it goes to the toolkit as it is,
+ * read on the way in, the matrix this frame's world is drawn with. The
+ * context global is the release's (overrides.inc).
+ *
+ * A frame that draws no level (the front end, a loading screen) leaves the
+ * camera at identity from the next frame on, as before (ts2_present).
+ */
+extern void xbox_D3D8SetRemixCamera(const float *view);
+
+static void ts2_draw_world(void (*draw_world)(void), uint32_t context_global)
+{
+    uint32_t context = TS2_MEM32(context_global), view;
+
+    if (context && (view = TS2_MEM32(context + 0x208)) != 0) {
+        float m[16];
+        int i;
+
+        for (i = 0; i < 16; i++)
+            m[i] = TS2_MEMF(view + 4u * (uint32_t)i);
+        xbox_D3D8SetRemixCamera(m);
+        g_ts2_frame_world = 1;
+    }
+    draw_world();
+}
 
 static void ts2_camera_setup(void (*camera_setup)(void))
 {
@@ -570,7 +608,9 @@ static void ts2_present(void (*present)(void))
     present();
     xbox_D3D8SetWideFrames(ts2_menus_wide() ||
                            (g_ts2_frame_camera && !g_ts2_frame_front_end));
-    g_ts2_frame_camera = g_ts2_frame_front_end = 0;
+    if (!g_ts2_frame_world)
+        xbox_D3D8SetRemixCamera(NULL);     /* see ts2_draw_world */
+    g_ts2_frame_camera = g_ts2_frame_front_end = g_ts2_frame_world = 0;
 }
 
 /* ── TimeSplitters 2: where each piece of 2D goes in widescreen ── */
@@ -670,8 +710,6 @@ static void ts2_ui_host_place(int place, uint32_t tag)
 /* The callers of the wrapped drawing functions now running, outermost first. */
 static RECOMP_MANUAL_TLS uint32_t g_ts2_chain[8];
 static RECOMP_MANUAL_TLS int      g_ts2_depth;
-
-#define TS2_MEM32(a) (*(volatile uint32_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 
 static int ts2_ui_parse_place(const char *s)
 {
