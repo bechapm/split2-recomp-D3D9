@@ -41,6 +41,23 @@ void sub_0009F180(void) { ts2_front_end_scene(sub_0009F180_gen); }
 extern void sub_001A5040_gen(void);
 void sub_001A5040(void) { ts2_draw_world(sub_001A5040_gen, 0x004B2F60u); }
 
+/* sweep is sub_00121710(index, from, to, height, radius, out, 1, 0): it
+ * moves a character from `from` towards `to` and corrects `to` in place to
+ * where it may go. Every one of the player's movement modes (the handlers
+ * of sub_001463D0's switch on P+0x158) moves through it and copies `to`
+ * into the player's position. Wrapped for the debugging tools' noclip and
+ * teleport (src/ts2_devtools.c), which answer with their own position. */
+extern void sub_00121710_gen(void);
+void sub_00121710(void) { ts2_dev_sweep(sub_00121710_gen); }
+
+/* look_at is sub_000E67F0(dst, eye xyz, forward xyz, up xyz), cdecl, all
+ * by value: the camera update sub_00035930 builds the view [ctx+0x208] with
+ * it at 0x00036D47 (found with RECOMP_WATCH_WRITE on the view matrix).
+ * Wrapped for the free camera, which hands it its own eye and forward at
+ * that one call (config/us/devtools.inc has the return address). */
+extern void sub_000E67F0_gen(void);
+void sub_000E67F0(void) { ts2_dev_look_at(sub_000E67F0_gen); }
+
 /* present is sub_001CC100 (PAL 0x001CC530): the only function in the game's
  * code that calls D3DDevice_Swap. */
 extern void sub_001CC100_gen(void);
