@@ -287,8 +287,28 @@ const Ts2UiPlace k_ts2_ui_places[] = {
  * alone (roster 0). PAL's are in config/pal/overrides.inc. */
 const Ts2Roster k_ts2_roster = { 0 };
 
-/* Loose mod files inside the paks: the pak table and its readers have not
- * been found in this release yet (table 0), so files/ and paks/ in a mod are
- * not served; whole data/*.pak files in a mod still are (the toolkit's
- * RECOMP_MODS). PAL's are in config/pal/overrides.inc. */
-const Ts2Paks k_ts2_paks = { 0 };
+/* Loose mod files inside the paks (ts2_paks_* in recomp_manual.c, which
+ * says how the game finds a file). In this stretch the USA code is PAL's
+ * moved by -0x60 and its data by -0x440 (code, each one checked): the
+ * mount sub_00085D50 (PAL 0x00085DB0; it compares the count [0x3585D8]
+ * with 25 and indexes the records with shl 5, add 0x3585F8), the read
+ * sub_00086450 (PAL 0x000864B0), the overlapped read sub_00086820 (PAL
+ * 0x00086880; it fills the overlapped block at 0x3585DC and sets the
+ * pending flag 0x358948), whose poll is sub_00086910 (PAL 0x00086970), and
+ * the lookups sub_000862A0 (P4CK, PAL 0x00086300) and sub_00086040 (P8CK,
+ * PAL 0x000860A0), which leave the record they found the file in at
+ * 0x3585F0. (USA's own sub_00086970 is another function: the loose-file
+ * read on the disc that a model the paks lack falls back to.) */
+extern void sub_000862A0(void);
+extern void sub_00086040(void);
+const Ts2Paks k_ts2_paks = {
+    0x003585F8, 0x003585D8, 25,   /* the table, its count, its size */
+    0x003585F0, 0x00358948,       /* the last lookup's record; a read pending */
+    sub_000862A0, sub_00086040,
+};
+extern void sub_00085D50_gen(void);
+void sub_00085D50(void) { ts2_paks_mount(sub_00085D50_gen); }
+extern void sub_00086450_gen(void);
+void sub_00086450(void) { ts2_paks_read(sub_00086450_gen); }
+extern void sub_00086820_gen(void);
+void sub_00086820(void) { ts2_paks_read_async(sub_00086820_gen); }

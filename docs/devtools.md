@@ -191,7 +191,23 @@ how it was found.
   holds only the guns that level uses (as an arcade match loads only the
   set chosen for it), and the game would look for any other on the disc,
   where it is not, and crash: those are marked "(not in level)" and are not
-  given.
+  given, unless the "every gun" mod below is in use.
+
+## Every gun in every level
+
+A level's data carries only the guns that level uses. To be able to give
+any of them anywhere, make a mod from your own disc that adds every gun's
+files (its models from `gun.pak`, its firing sound from a level that has
+it) to every level, and run with it:
+
+```bash
+python3 tools/ts2mod.py guns game/data private/mods/allguns
+RECOMP_MODS=private/mods/allguns ./split2_recomp     # ';' between mods on Windows
+```
+
+The game still loads a gun only when it is given or picked up, so nothing
+is loaded up front. The mod is the game's own files: keep it in `private/`
+and never commit or share it.
 
 Not possible: a full save state. The game is native code running on real
 threads with graphics objects behind it, so there is no snapshot to restore;
