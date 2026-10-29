@@ -505,14 +505,20 @@ static int g_ts2_frame_camera, g_ts2_frame_front_end, g_ts2_frame_world;
  *
  * A frame that draws no level (the front end, a loading screen) leaves the
  * camera at identity from the next frame on, as before (ts2_present).
+ * RECOMP_TS2_REMIX_CAMERA=0 never sets it, for comparison.
  */
 extern void xbox_D3D8SetRemixCamera(const float *view);
 
 static void ts2_draw_world(void (*draw_world)(void), uint32_t context_global)
 {
+    static int on = -1;
     uint32_t context = TS2_MEM32(context_global), view;
 
-    if (context && (view = TS2_MEM32(context + 0x208)) != 0) {
+    if (on < 0) {
+        const char *e = getenv("RECOMP_TS2_REMIX_CAMERA");
+        on = !(e && e[0] == '0');
+    }
+    if (on && context && (view = TS2_MEM32(context + 0x208)) != 0) {
         float m[16];
         int i;
 
