@@ -15,7 +15,8 @@
 typedef struct Ts2DevAddrs {
     uint32_t player_base;     /* dword: player 1's record (P) */
     uint32_t level_id;        /* dword: the level now loaded */
-    uint32_t level_front_end; /* its value in the front end */
+    uint32_t level_menus;     /* the first value that is not a playable level (the front
+                               * end, loading, the screens between: this and above) */
     uint32_t god;             /* dword: the developers' god mode (player-controlled characters) */
     uint32_t infinite_ammo;   /* dword: the developers' infinite ammo */
     uint32_t unlock_all;      /* dword: every unlock condition passes */

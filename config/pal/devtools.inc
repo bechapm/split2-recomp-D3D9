@@ -8,7 +8,7 @@
  */
 static const Ts2DevAddrs k_ts2_dev = {
     0,                  /* player records */
-    0, 0,               /* level id */
+    0, 0,               /* level id, first non-level value */
     0, 0,               /* god, infinite ammo */
     /* unlock_all and the override bytes, read by sub_001AEB10 and
      * sub_000A9740(n) (code; docs/formats/roster.md). */

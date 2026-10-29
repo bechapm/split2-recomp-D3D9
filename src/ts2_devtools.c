@@ -191,9 +191,26 @@ static int dev_ptr_ok(uint32_t p)
     return (p >= 0x00010000u && p < 0x04000000u) || (p >= 0x80000000u && p < 0x84000000u);
 }
 
+/* A level is playing: its number is a level's, and player 1 has a record,
+ * a character and a camera. During boot and the front end the number holds
+ * other things, and a tool used then (the readout's ray, a teleport) was
+ * working on nothing. */
+static uint32_t dev_player(void);
+static uint32_t dev_chr(uint32_t p);
+static uint32_t dev_context(void);
+
 static int dev_in_level(void)
 {
-    return A->level_id && DEV_MEM32(A->level_id) != A->level_front_end;
+    uint32_t p, ctx, room;
+
+    if (!A->level_id || DEV_MEM32(A->level_id) >= A->level_menus)
+        return 0;
+    p = dev_player();
+    ctx = dev_context();
+    if (!p || !dev_chr(p) || !ctx)
+        return 0;
+    room = DEV_MEM32(ctx + TS2_CTX_ROOM);
+    return room < 0x1000u && DEV_MEM32(p + TS2_P_ROOM) < 0x1000u;
 }
 
 /* Player 1's record, or 0. */
@@ -529,8 +546,9 @@ static void dev_freecam_input(float move[3], float turn[2], float *speed)
     if (xbox_D3D8KeyDown(VK_DOWN_))  turn[1] -= 1.0f;
 }
 
-/* Start from the camera as the game left it: its eye, and its right and
- * forward rows, kept as a level forward, a level right and a pitch, and
+/* Start from the camera as the game left it: its eye, its right row and
+ * the forward (the look-at makes the third row -forward, measured: taken as
+ * it was, the camera flew backwards), kept as a level forward, a level right and a pitch, and
  * turned in the plane of those two, so the camera never needs to know which
  * way round the game's axes are. Its room is the player's to begin with:
  * in first person the eye is the player's. */
@@ -546,7 +564,7 @@ static int dev_freecam_start(uint32_t p)
     w = ctx + TS2_CTX_WORLD;
     for (i = 0; i < 3; i++) {
         D.fc_right[i] = DEV_MEMF(w + 4u * (uint32_t)i);
-        f[i] = DEV_MEMF(w + 0x20u + 4u * (uint32_t)i);
+        f[i] = -DEV_MEMF(w + 0x20u + 4u * (uint32_t)i);   /* the row is -forward */
         D.fc_eye[i] = DEV_MEMF(w + 0x30u + 4u * (uint32_t)i);
         D.fc_room_eye[i] = p ? DEV_MEMF(p + TS2_P_EYE + 4u * (uint32_t)i) : D.fc_eye[i];
     }
@@ -954,12 +972,12 @@ static void dev_configure(void)
 static void dev_aim(uint32_t p, char *out, size_t n)
 {
     uint32_t ctx = dev_context(), pts, args[10], obj, cls, model, name;
-    float eye[3], dir[3], hit[3];
+    float eye[3], dir[3], hit[3], start[3];
     char model_name[40];
     int i, room;
 
     out[0] = 0;
-    if (!A->ray || !ctx)
+    if (!A->ray || !ctx || !dev_in_level())
         return;
     if (D.freecam) {
         memcpy(eye, D.fc_eye, sizeof eye);
@@ -973,10 +991,14 @@ static void dev_aim(uint32_t p, char *out, size_t n)
         room = (int)DEV_MEM32(ctx + TS2_CTX_ROOM);
     }
     dev_normalize(dir);
-    for (i = 0; i < 3; i++)
+    /* From just ahead of the eye: from the eye itself the ray hit the
+     * player's own character nearly every frame, ignore or not. */
+    for (i = 0; i < 3; i++) {
+        start[i] = eye[i] + dir[i] * 0.75f;
         dir[i] *= 1000.0f;
+    }
     pts = dev_scratch(0x50);
-    dev_put3(pts, eye);
+    dev_put3(pts, start);
     dev_put3(pts + 0x10, dir);
     hit[0] = hit[1] = hit[2] = 0.0f;
     dev_put3(pts + 0x20, hit);
