@@ -569,6 +569,7 @@ static void dev_freecam_input(float move[3], float turn[2], float *speed)
     uint16_t buttons = 0;
     uint8_t analog[8] = { 0 };
     int16_t sticks[4] = { 0 };
+    int i;
 
     xbox_InputRead(0, &buttons, analog, sticks);
     move[0] = dev_axis(sticks[1]);
@@ -590,6 +591,11 @@ static void dev_freecam_input(float move[3], float turn[2], float *speed)
     if (xbox_D3D8KeyDown(VK_LEFT_))  turn[0] -= 1.0f;
     if (xbox_D3D8KeyDown(VK_UP_))    turn[1] += 1.0f;
     if (xbox_D3D8KeyDown(VK_DOWN_))  turn[1] -= 1.0f;
+    /* A key bound to the pad (WASD on the left stick) is read twice. */
+    for (i = 0; i < 3; i++)
+        move[i] = move[i] > 1.0f ? 1.0f : move[i] < -1.0f ? -1.0f : move[i];
+    for (i = 0; i < 2; i++)
+        turn[i] = turn[i] > 1.0f ? 1.0f : turn[i] < -1.0f ? -1.0f : turn[i];
 }
 
 /* Start from the camera as the game left it: its eye, its right row and
@@ -1074,13 +1080,11 @@ static void dev_action(int act, uint32_t p)
     case ACT_FREECAM:
         if (D.freecam) {
             D.freecam = 0;
-            xbox_InputWithhold(0, D.menu);
             dev_say("free camera off");
         } else if (!A->look_at_return) {
             dev_say("free camera: not found in this release");
         } else if (dev_in_level() && dev_freecam_start(p)) {
             D.freecam = 1;
-            xbox_InputWithhold(0, 1);
             dev_say("free camera ON");
         }
         break;
@@ -1124,7 +1128,6 @@ static void dev_action(int act, uint32_t p)
     case ACT_MENU:
         D.menu = !D.menu;
         D.menu_was = 0xFFFF;            /* what opened it is not a press in it */
-        xbox_InputWithhold(0, D.menu || D.freecam);
         break;
     case ACT_WIREFRAME:
         xbox_D3D8SetWireframe(!xbox_D3D8Wireframe());
@@ -1523,6 +1526,30 @@ static void dev_show(uint32_t p)
     }
 }
 
+/* The game reads a neutral pad while the menu or the free camera has it,
+ * and after the menu closes until the controls that closed it are let go:
+ * a B, Start or Esc still held would reach the game (Esc is Start in a
+ * level with keyboard bindings, which opens the pause menu). */
+static void dev_withhold(void)
+{
+    static int held = -1;
+    int want = D.menu || D.freecam;
+
+    if (!want && held == 1) {
+        uint16_t buttons = 0;
+        uint8_t analog[8] = { 0 };
+
+        xbox_InputRead(0, &buttons, analog, NULL);
+        want = (buttons & (PADB_START | PADB_BACK | PADB_LTHUMB | PADB_RTHUMB)) ||
+               analog[PAD_A] > 64 || analog[PAD_B] > 64 ||
+               xbox_D3D8KeyDown(VK_RETURN_) || xbox_D3D8KeyDown(VK_ESCAPE_);
+    }
+    if (want != held) {
+        xbox_InputWithhold(0, want);
+        held = want;
+    }
+}
+
 void ts2_dev_frame(void)
 {
     uint32_t p;
@@ -1550,10 +1577,7 @@ void ts2_dev_frame(void)
 
     /* A level gone (the front end, a load): its tools go with it. */
     if (!dev_in_level() || !p) {
-        if (D.freecam) {
-            D.freecam = 0;
-            xbox_InputWithhold(0, D.menu);
-        }
+        D.freecam = 0;
         D.noclip = 0;
         D.tp_sweeps = 0;
     } else if (D.start_tp_pending) {
@@ -1568,5 +1592,6 @@ void ts2_dev_frame(void)
         dev_freecam_step();
     if (D.noclip && p && !D.menu)
         dev_noclip_step(p);
+    dev_withhold();
     dev_show(p);
 }
