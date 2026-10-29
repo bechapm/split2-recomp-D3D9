@@ -43,6 +43,7 @@ Only with `ts2_dev = 1`, and only while the game's window is in front.
 | F8 | Noclip |
 | F12 or Pause | Stop the game's clock, or start it again |
 | Page Down | One frame forward while the clock is stopped |
+| End | Wireframe view (every draw as lines; `RECOMP_WIREFRAME=1` starts with it on) |
 
 F9, F10 and F11 stay the toolkit's: the frame-rate counter, the frame cap and
 a frame capture.
@@ -88,7 +89,7 @@ RECOMP_TS2_DEV_SEQ=4200:freeze,4210:freecam,4600:step,4700:freeze,4710:freecam
 ```
 
 The actions are `readout god ammo invisible unlock save load freecam noclip
-freeze step`. The free camera and noclip read controller 1, so
+freeze step wireframe`. The free camera and noclip read controller 1, so
 `RECOMP_INPUT_SEQ` moves them (`<ms>:<control>:<hold ms>`, for example
 `90000:lstick_up:2000,93000:rstick_right:500,94000:rt:800`).
 `ts2_teleport` and a saved position make a test start from the same spot

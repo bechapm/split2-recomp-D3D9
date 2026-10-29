@@ -26,7 +26,7 @@
  *                          the keys' actions at given frames (from the first
  *                          present), for scripted runs: readout god ammo
  *                          unlock save load freecam noclip freeze step
- *                          invisible
+ *                          invisible wireframe
  *   ts2_teleport = x,y,z[,yaw,pitch]  RECOMP_TS2_TELEPORT
  *                          where the player is put once the first level is
  *                          playing: a repeatable spot for a scripted run
@@ -38,6 +38,7 @@
  *   F5  save position      F6  back to the saved position
  *   F7  free camera        F8  noclip          F12 or Pause: stop the clock
  *   Page Down: one frame forward while the clock is stopped
+ *   End  wireframe (the toolkit's, RECOMP_WIREFRAME)
  *
  * Saved positions are kept per level in ts2_positions.txt beside the
  * executable (RECOMP_TS2_POSITIONS names another file), one line each:
@@ -106,6 +107,8 @@ extern int         host_exe_path(char *buf, size_t bytes);
 extern void        host_path_dirname(char *path);
 extern int         xbox_D3D8KeyDown(int vk);
 extern void        xbox_D3D8Notice(const char *text, unsigned ms);
+extern void        xbox_D3D8SetWireframe(int on);
+extern int         xbox_D3D8Wireframe(void);
 extern void        xbox_InputWithhold(unsigned port, int on);
 extern int         xbox_InputRead(unsigned port, uint16_t *buttons, uint8_t analog[8],
                                   int16_t thumbs[4]);
@@ -118,7 +121,7 @@ extern int         xbox_InputRead(unsigned port, uint16_t *buttons, uint8_t anal
 enum {
     VK_F1_ = 0x70, VK_F2_, VK_F3_, VK_F4_, VK_F5_, VK_F6_, VK_F7_, VK_F8_,
     VK_F12_ = 0x7B, VK_PAUSE_ = 0x13, VK_NEXT_ = 0x22, VK_SHIFT_ = 0x10,
-    VK_SPACE_ = 0x20, VK_CONTROL_ = 0x11, VK_HOME_ = 0x24,
+    VK_SPACE_ = 0x20, VK_CONTROL_ = 0x11, VK_HOME_ = 0x24, VK_END_ = 0x23,
     VK_LEFT_ = 0x25, VK_UP_, VK_RIGHT_, VK_DOWN_,
 };
 
@@ -672,12 +675,13 @@ void ts2_dev_look_at(void (*look_at)(void))
 /* What a key (or a step of ts2_dev_seq) does. */
 enum {
     ACT_READOUT, ACT_GOD, ACT_AMMO, ACT_UNLOCK, ACT_SAVE, ACT_LOAD,
-    ACT_FREECAM, ACT_NOCLIP, ACT_FREEZE, ACT_STEP, ACT_INVISIBLE, ACT_COUNT
+    ACT_FREECAM, ACT_NOCLIP, ACT_FREEZE, ACT_STEP, ACT_INVISIBLE, ACT_WIREFRAME,
+    ACT_COUNT
 };
 
 static const char *const k_dev_actions[ACT_COUNT] = {
     "readout", "god", "ammo", "unlock", "save", "load",
-    "freecam", "noclip", "freeze", "step", "invisible",
+    "freecam", "noclip", "freeze", "step", "invisible", "wireframe",
 };
 
 static void dev_action(int act, uint32_t p)
@@ -765,6 +769,10 @@ static void dev_action(int act, uint32_t p)
         if (D.frozen)
             D.step = 1;
         break;
+    case ACT_WIREFRAME:
+        xbox_D3D8SetWireframe(!xbox_D3D8Wireframe());
+        dev_say("wireframe %s", xbox_D3D8Wireframe() ? "ON" : "off");
+        break;
     case ACT_INVISIBLE:
         D.invisible = !D.invisible;
         dev_say(A->sight_returns[0] ? "invisible to enemies %s" : "invisible: not found",
@@ -780,7 +788,7 @@ static void dev_keys(uint32_t p)
         { VK_F4_, ACT_INVISIBLE }, { VK_HOME_, ACT_UNLOCK },
         { VK_F5_, ACT_SAVE },    { VK_F6_, ACT_LOAD },
         { VK_F7_, ACT_FREECAM }, { VK_F8_, ACT_NOCLIP },  { VK_F12_, ACT_FREEZE },
-        { VK_PAUSE_, ACT_FREEZE }, { VK_NEXT_, ACT_STEP },
+        { VK_PAUSE_, ACT_FREEZE }, { VK_NEXT_, ACT_STEP }, { VK_END_, ACT_WIREFRAME },
     };
     size_t i;
 
