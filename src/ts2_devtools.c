@@ -106,7 +106,7 @@
  *     name shown, the pickup sound), then its ammunition filled and the item
  *     put in hand. A level's pak carries only the guns the level uses, and
  *     the game looks for any other on the disc as a loose file, which is not
- *     there: such an item is marked "not in level" and not given.
+ *     there: such an item is marked "not here" and not given.
  */
 #include <math.h>
 #include <stdarg.h>
@@ -1350,7 +1350,7 @@ static const char *dev_menu_value(int row, char *buf, size_t n)
         int in = r && dev_in_level();
 
         snprintf(buf, n, "< %s >%s", dev_item_name(D.item, name, sizeof name),
-                 !in ? "" : !dev_item_givable(D.item) ? " (not in level)" :
+                 !in ? "" : !dev_item_givable(D.item) ? " (not here)" :
                  DEV_MEM32(r + TS2_R_OWNED + 4u * (uint32_t)D.item) ? " (have)" : "");
         return buf;
     }

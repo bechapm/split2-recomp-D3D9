@@ -190,7 +190,7 @@ how it was found.
   the game itself shows; "(have)" means you already carry it. A level's data
   holds only the guns that level uses (as an arcade match loads only the
   set chosen for it), and the game would look for any other on the disc,
-  where it is not, and crash: those are marked "(not in level)" and are not
+  where it is not, and crash: those are marked "(not here)" and are not
   given, unless the "every gun" mod below is in use.
 
 ## Every gun in every level
