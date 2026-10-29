@@ -499,36 +499,59 @@ static int g_ts2_frame_camera, g_ts2_frame_front_end, g_ts2_frame_world;
  * two copies as the camera moves -- to the vertex constants as the model-
  * view (c64-c67, transposed), and draws: the level is modelled in world
  * space, so that matrix is the view itself. It is already D3D's row-vector
- * VIEW (translation in the last row), so it goes to the toolkit as it is,
- * read on the way in, the matrix this frame's world is drawn with. The
- * context global is the release's (overrides.inc).
+ * VIEW (translation in the last row). The context global is the release's
+ * (overrides.inc).
+ *
+ * draw_world comes late in a frame: most of a frame's draws, sky and
+ * level pieces among them, are made before it, from the camera the
+ * pointer already shows then. Handed over on the way into draw_world they
+ * carried the frame before's view, a step out wherever the camera moved.
+ * So the toolkit asks for the view at each draw (ts2_remix_view), reading
+ * the pointer as it is at that moment; draw_world only says where the
+ * context is and that a level is being drawn.
  *
  * A frame that draws no level (the front end, a loading screen) leaves the
  * camera at identity from the next frame on, as before (ts2_present).
  * RECOMP_TS2_REMIX_CAMERA=0 never sets it, for comparison; =t gives the
  * matrix transposed, to test the convention.
  */
-extern void xbox_D3D8SetRemixCamera(const float *view);
+extern void xbox_D3D8SetRemixViewSource(int (*source)(float view[16]));
+
+static uint32_t g_ts2_context_global;
+static int      g_ts2_world_live;      /* a level was drawn last frame or this one */
+static int      g_ts2_view_transpose;
+
+static int ts2_remix_view(float m[16])
+{
+    uint32_t context, view;
+    int i;
+
+    if (!g_ts2_context_global || !(g_ts2_world_live || g_ts2_frame_world))
+        return 0;
+    context = TS2_MEM32(g_ts2_context_global);
+    if (!context || !(view = TS2_MEM32(context + 0x208)))
+        return 0;
+    for (i = 0; i < 16; i++)
+        m[g_ts2_view_transpose ? (i % 4) * 4 + i / 4 : i] =
+            TS2_MEMF(view + 4u * (uint32_t)i);
+    return 1;
+}
 
 static void ts2_draw_world(void (*draw_world)(void), uint32_t context_global)
 {
-    static int on = -1, transpose;
-    uint32_t context = TS2_MEM32(context_global), view;
+    static int on = -1;
 
     if (on < 0) {
         const char *e = getenv("RECOMP_TS2_REMIX_CAMERA");
         on = !(e && e[0] == '0');
-        transpose = e && e[0] == 't';
+        g_ts2_view_transpose = e && e[0] == 't';
+        if (on) {
+            g_ts2_context_global = context_global;
+            xbox_D3D8SetRemixViewSource(ts2_remix_view);
+        }
     }
-    if (on && context && (view = TS2_MEM32(context + 0x208)) != 0) {
-        float m[16];
-        int i;
-
-        for (i = 0; i < 16; i++)
-            m[transpose ? (i % 4) * 4 + i / 4 : i] = TS2_MEMF(view + 4u * (uint32_t)i);
-        xbox_D3D8SetRemixCamera(m);
+    if (on)
         g_ts2_frame_world = 1;
-    }
     draw_world();
 }
 
@@ -616,8 +639,7 @@ static void ts2_present(void (*present)(void))
     present();
     xbox_D3D8SetWideFrames(ts2_menus_wide() ||
                            (g_ts2_frame_camera && !g_ts2_frame_front_end));
-    if (!g_ts2_frame_world)
-        xbox_D3D8SetRemixCamera(NULL);     /* see ts2_draw_world */
+    g_ts2_world_live = g_ts2_frame_world;  /* see ts2_draw_world */
     g_ts2_frame_camera = g_ts2_frame_front_end = g_ts2_frame_world = 0;
 }
 
