@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "controllers": [
+    {
+      "port": 1,
+      "bindings": {
+        "lstick_up":    ["pad:ly+", "key:W"],
+        "lstick_down":  ["pad:ly-", "key:S"],
+        "lstick_left":  ["pad:lx-", "key:A"],
+        "lstick_right": ["pad:lx+", "key:D"],
+        "rtrigger":     ["pad:rt", "mouse:left"],
+        "ltrigger":     ["pad:lt", "mouse:middle"],
+        "rthumb":       ["pad:rthumb", "mouse:right"],
+        "a":            ["pad:a", "key:E", "key:RETURN"],
+        "y":            ["pad:y", "key:R"],
+        "lthumb":       ["pad:lthumb", "key:LCTRL", "key:C"],
+        "dpad_left":    ["pad:dpad_left", "mouse:wheel_up", "key:LEFT"],
+        "dpad_right":   ["pad:dpad_right", "mouse:wheel_down", "key:RIGHT"],
+        "dpad_up":      ["pad:dpad_up", "key:UP", "key:Z"],
+        "dpad_down":    ["pad:dpad_down", "key:DOWN", "key:X"],
+        "start":        ["pad:start", "key:ESCAPE"],
+        "b":            ["pad:b", "key:BACK"],
+        "back":         ["pad:back", "key:TAB"],
+        "x":            ["pad:x"],
+        "black":        ["pad:lshoulder"],
+        "white":        ["pad:rshoulder"]
+      }
+    }
+  ]
+}

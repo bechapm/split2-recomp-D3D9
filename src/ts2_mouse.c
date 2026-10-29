@@ -1,0 +1,217 @@
+/*
+ * ts2_mouse.c -- TimeSplitters 2 on a mouse and keyboard.
+ *
+ * Three things, each a fact about this game rather than the toolkit's:
+ *
+ *   mouse aim: the toolkit's mouse look moves the right stick, and a stick
+ *     is a speed. TS2 turns the player by the stick in one function, look
+ *     (sub_00148A60 in the USA release), which adds rate * stick to the
+ *     view angles in the player record, then clamps the pitch. Here look
+ *     runs as it always did, for the pad, and afterwards the mouse's counts
+ *     since last time are added to the same two angles directly: so many
+ *     degrees a count, whatever the speed, which is what mouse aim is on a
+ *     PC. Only for player 1, only when look itself turned the player (not
+ *     on a mounted gun, not in a cutscene or a menu, where look is not
+ *     called or turns nothing), and scaled by the field of view so a scope
+ *     zoomed four times turns four times finer. The game's own Inverse Look
+ *     preference inverts the mouse too.
+ *
+ *   auto lookahead: with that preference on, look tilts the view back to
+ *     level while you run with nothing on the look stick. With a mouse the
+ *     look stick is always still, so it would pull against every aim; while
+ *     mouse look is on, look's pitch change with a still stick is undone.
+ *
+ *   one key, two meanings (the toolkit's bindings filter): Escape is bound
+ *     to Start, which pauses in a level, but in the front end Start
+ *     accepts, so there Escape reads as B (back). And the mouse wheel,
+ *     bound to the D-pad's left and right (previous and next weapon), is
+ *     its up and down (zoom in and out) while aiming, as the game's Default
+ *     controls have the D-pad.
+ *
+ * The keys themselves are config/input_defaults.json, the title's own layout
+ * (recomp_title_input in CMakeLists.txt).
+ */
+#include <math.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "ts2_mouse.h"
+#include "recomp/gen/recomp_cpu.h"   /* g_esp */
+#include "recomp/ts2_region.h"
+#include "input_bindings.h"          /* xboxrecomp: the mouse and the filter */
+#include "recomp_config.h"           /* xboxrecomp: RECOMP_TS2_MOUSE_LOG */
+
+/* Where this release keeps what the mouse uses: each release's own table. */
+#if defined(TS2_REGION_US)
+#include "../config/us/mouse.inc"
+#else
+/* Not found in the PAL release yet: the keys work, the mouse turns nothing. */
+static const Ts2MouseAddrs k_ts2_mouse = { 0 };
+#endif
+
+static const Ts2MouseAddrs *const A = &k_ts2_mouse;
+
+extern ptrdiff_t g_xbox_mem_offset;
+
+#define M_MEM32(a) (*(volatile uint32_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
+#define M_MEMF(a)  (*(volatile float *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
+#define M_MEM8(a)  (*(volatile uint8_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
+
+/* Degrees a mouse count turns at the default sensitivity (80): 0.044, the
+ * same as the Source engine's 0.022 at sensitivity 2, so a turn right
+ * round is 8,200 counts, ten inches on an 800 dpi mouse. Each 20 steps of
+ * the setting doubles or halves it (0.0028 at 1, 0.088 at 100). */
+#define TS2_MOUSE_DEGREES   0.044
+#define TS2_MOUSE_PER_STEP  20.0
+/* The field of view the turn rate is measured against: look multiplies by
+ * fov / 60, and so does the mouse. */
+#define TS2_MOUSE_FOV       60.0f
+
+static struct {
+    unsigned frame;         /* presents seen */
+    unsigned took;          /* the frame motion was last taken in */
+    int      started;
+    int      log;
+    unsigned logged;
+} M;
+
+static int m_ptr_ok(uint32_t a)
+{
+    return a >= 0x10000u && a < 0x08000000u;
+}
+
+static int m_in_level(void)
+{
+    return A->level_id && M_MEM32(A->level_id) < A->level_menus;
+}
+
+static uint32_t m_player1(void)
+{
+    uint32_t p = A->player_base ? M_MEM32(A->player_base) : 0;
+
+    return m_ptr_ok(p) ? p : 0;
+}
+
+static float m_sign(uint32_t a)
+{
+    return a && M_MEMF(a) < 0.0f ? -1.0f : 1.0f;
+}
+
+/* ── the bindings filter ─────────────────────────────────────── */
+
+static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
+{
+    uint32_t p;
+
+    if (port != 0)
+        return;
+    if (!m_in_level()) {
+        /* The front end: Escape (Start, from the keyboard) backs out. */
+        if (A->level_id && (kbm->wButtons & XBOX_GAMEPAD_START)) {
+            pad->wButtons &= (WORD)~XBOX_GAMEPAD_START;
+            pad->bAnalogButtons[XBOX_BUTTON_B] = 255;
+        }
+        return;
+    }
+    /* Aiming: the wheel (the D-pad's left and right, from the mouse or the
+     * keyboard) zooms, as the D-pad's up and down do. */
+    p = m_player1();
+    if (p && M_MEM32(p + TS2_PM_AIMING)) {
+        if (kbm->wButtons & XBOX_GAMEPAD_DPAD_LEFT) {
+            pad->wButtons &= (WORD)~XBOX_GAMEPAD_DPAD_LEFT;
+            pad->wButtons |= XBOX_GAMEPAD_DPAD_UP;
+        }
+        if (kbm->wButtons & XBOX_GAMEPAD_DPAD_RIGHT) {
+            pad->wButtons &= (WORD)~XBOX_GAMEPAD_DPAD_RIGHT;
+            pad->wButtons |= XBOX_GAMEPAD_DPAD_DOWN;
+        }
+    }
+}
+
+void ts2_mouse_frame(void)
+{
+    M.frame++;
+    if (M.started)
+        return;
+    M.started = 1;
+    recomp_bindings_set_filter(m_filter);
+    M.log = recomp_config_bool("RECOMP_TS2_MOUSE_LOG", NULL, 0);
+    if (A->player_base) {
+        recomp_mouse_set_direct(1);
+        fprintf(stderr, "[TS2-MOUSE] the mouse turns the player directly%s\n",
+                recomp_mouse_look() ? "" : " (once mouse look is on)");
+    } else {
+        fprintf(stderr, "[TS2-MOUSE] this release's look is not known yet: "
+                        "the mouse moves the right stick\n");
+    }
+}
+
+/* ── look ────────────────────────────────────────────────────── */
+
+void ts2_mouse_look(void (*look)(void))
+{
+    uint32_t p, stick, flags, mode;
+    float pitch0 = 0.0f, dx, dy, deg, fov, limit, yaw, pitch;
+    int mine, took;
+
+    p = A->current_player ? M_MEM32(A->current_player) : 0;
+    stick = M_MEM32(g_esp + 4);             /* [esp] is the return address */
+    mine = p && p == m_player1();
+    if (mine)
+        pitch0 = M_MEMF(p + TS2_PM_PITCH);
+    look();
+    if (!mine || !recomp_mouse_look())
+        return;
+
+    /* What look turns by itself: the player record, by the look stick.
+     * The rest (a mounted gun, the modes it leaves alone) stays the pad's. */
+    flags = M_MEM32(p + TS2_PM_FLAGS);
+    mode = M_MEM32(p + TS2_PM_MODE);
+    if (!(flags & 8) || M_MEM32(p + TS2_PM_HELD) || mode == 6 || mode == 7 ||
+        mode == 8 || mode == 9)
+        return;
+
+    /* Auto lookahead with a still look stick: not with a mouse. */
+    pitch = M_MEMF(p + TS2_PM_PITCH);
+    if (m_ptr_ok(stick) && M_MEMF(stick + 4) == 0.0f)
+        pitch = pitch0;
+
+    /* Motion that waited while nothing took it (a menu, a cutscene, a
+     * load) is old: the first look after it starts from still. */
+    took = recomp_mouse_take(&dx, &dy);
+    if (M.frame - M.took > 2u)
+        dx = dy = 0.0f;
+    M.took = M.frame;
+
+    deg = (float)(TS2_MOUSE_DEGREES *
+                  pow(2.0, (recomp_mouse_sensitivity() - 80) / TS2_MOUSE_PER_STEP));
+    fov = A->context && m_ptr_ok(M_MEM32(A->context))
+              ? M_MEMF(M_MEM32(A->context) + A->context_fov) : TS2_MOUSE_FOV;
+    if (fov > 1.0f && fov < 170.0f)
+        deg *= fov / TS2_MOUSE_FOV;
+
+    yaw = M_MEMF(p + TS2_PM_YAW) + dx * deg * m_sign(A->yaw_rate);
+    while (yaw < 0.0f)
+        yaw += 360.0f;
+    while (yaw >= 360.0f)
+        yaw -= 360.0f;
+    /* Screen y grows down; up on the mouse is up on the stick. */
+    pitch += -dy * deg * m_sign(A->pitch_rate) *
+             ((M_MEM8(M_MEM32(p + TS2_PM_PREFS) + 2) & 1) ? -1.0f : 1.0f);
+    limit = A->pitch_limit ? M_MEMF(A->pitch_limit) : 90.0f;
+    if (limit > 0.0f && limit <= 90.0f) {
+        if (pitch > limit)  pitch = limit;
+        if (pitch < -limit) pitch = -limit;
+    }
+    M_MEMF(p + TS2_PM_YAW) = yaw;
+    M_MEMF(p + TS2_PM_PITCH) = pitch;
+
+    if (M.log && M.frame - M.logged >= (took ? 10u : 60u)) {
+        M.logged = M.frame;
+        fprintf(stderr, "[TS2-MOUSE] frame %u: moved %.0f,%.0f  yaw %.1f pitch %.1f "
+                        "(limit %.1f)  fov %.1f  flags 0x%X mode %u aiming %u\n",
+                M.frame, dx, dy, yaw, pitch, limit, fov, flags, mode,
+                M_MEM32(p + TS2_PM_AIMING));
+    }
+}

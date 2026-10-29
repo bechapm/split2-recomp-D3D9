@@ -46,6 +46,15 @@ void sub_001A5040(void) { ts2_draw_world(sub_001A5040_gen, 0x004B2F60u); }
 extern void sub_001CC100_gen(void);
 void sub_001CC100(void) { ts2_present(sub_001CC100_gen); }
 
+/* look is sub_00148A60: look(stick, move, out), cdecl, on the record at
+ * [0x00497100]. It turns that record's yaw (+0x148) and pitch (+0x14C) by
+ * the stick -- rate * stick, the aim mode's split stick, a mounted gun's
+ * own angles -- and clamps the pitch; config/us/mouse.inc has its globals.
+ * The mouse is added after it (src/ts2_mouse.c). Not yet found in the PAL
+ * release. */
+extern void sub_00148A60_gen(void);
+void sub_00148A60(void) { ts2_mouse_look(sub_00148A60_gen); }
+
 /* reserve is sub_001C8E35 (PAL 0x001C9265): 52 callers, a switch on its
  * first argument (the primitive type), and it calls the flush. flush is
  * sub_001C98AF (PAL 0x001C9CDF): it draws through sub_001CC1D0, the game's

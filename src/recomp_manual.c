@@ -628,6 +628,9 @@ static int ts2_menus_wide(void)
  */
 extern void xbox_D3D8SetInterpRegisters(int projection, int affine_first, int affine_count);
 
+/* The mouse and keyboard (keys, the mouse turning the player): src/ts2_mouse.c. */
+#include "ts2_mouse.h"
+
 static void ts2_present(void (*present)(void))
 {
     static int interp_said;
@@ -641,6 +644,7 @@ static void ts2_present(void (*present)(void))
                            (g_ts2_frame_camera && !g_ts2_frame_front_end));
     g_ts2_world_live = g_ts2_frame_world;  /* see ts2_draw_world */
     g_ts2_frame_camera = g_ts2_frame_front_end = g_ts2_frame_world = 0;
+    ts2_mouse_frame();                     /* src/ts2_mouse.c */
 }
 
 /* ── TimeSplitters 2: where each piece of 2D goes in widescreen ── */
