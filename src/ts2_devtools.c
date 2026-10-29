@@ -104,7 +104,9 @@
  *     flash or message waiting meanwhile shows when it is back.
  *   give item: what picking the item up does (the game's own function: its
  *     name shown, the pickup sound), then its ammunition filled and the item
- *     put in hand.
+ *     put in hand. A level's pak carries only the guns the level uses, and
+ *     the game looks for any other on the disc as a loose file, which is not
+ *     there: such an item is marked "not in level" and not given.
  */
 #include <math.h>
 #include <stdarg.h>
@@ -890,6 +892,47 @@ static const char *dev_item_name(int item, char *buf, size_t n)
     return buf;
 }
 
+/* Whether model m is there to load: loaded already, resident, or in the
+ * level's pak -- the places the game looks before the loose file on the
+ * disc, which a gun the level does not carry is not. */
+static int dev_model_present(uint32_t m)
+{
+    uint32_t path;
+
+    if (m >= 2048)
+        return 1;                       /* none: nothing to load */
+    if (DEV_MEM32(A->model_loaded + m * 0x24u))
+        return 1;
+    path = DEV_MEM32(A->object_list + m * 0x24u);
+    if (!dev_ptr_ok(path))
+        return 1;
+    if (A->resident_find && dev_guest_call(A->resident_find, dev_scratch(0), &path, 1))
+        return 1;
+    return A->pak_find && dev_guest_call(A->pak_find, dev_scratch(0), &path, 1);
+}
+
+/* Whether the level can give the item: each of its weapons' models, first-
+ * and third-person, is there to load. 1 for an item with no weapon, and
+ * where this release's tables are not known. */
+static int dev_item_givable(int item)
+{
+    uint32_t d;
+    int32_t type;
+    int side;
+
+    if (!A->item_table || !A->weapon_defs || !A->model_loaded || !A->object_list)
+        return 1;
+    for (side = 0; side < 2; side++) {
+        type = (int32_t)DEV_MEM32(A->item_table + (uint32_t)item * A->item_stride + 4u * (uint32_t)side);
+        if (type < 0 || (uint32_t)type >= A->weapon_type_count)
+            continue;
+        d = A->weapon_defs + (uint32_t)type * A->weapon_def_stride;
+        if (!dev_model_present(DEV_MEM32(d)) || !dev_model_present(DEV_MEM32(d + 4)))
+            return 0;
+    }
+    return 1;
+}
+
 /* Player 1's character record (R), or 0. */
 static uint32_t dev_record(uint32_t p)
 {
@@ -912,6 +955,10 @@ static void dev_give(uint32_t p)
     }
     if (!r || !dev_in_level()) {
         dev_say("give item: not in a level");
+        return;
+    }
+    if (!dev_item_givable(D.item)) {
+        dev_say("%s is not in this level", name);
         return;
     }
     args[0] = r;
@@ -1172,11 +1219,10 @@ static void dev_configure(void)
  * Writes a line, or nothing without a ray. */
 static void dev_aim(char *out, size_t n)
 {
-    uint32_t ctx = dev_context(), pts, args[10], obj = 0, cls, model, name, self;
-    float eye[3], dir[3], hit[3], start[3], delta[3];
+    uint32_t ctx = dev_context(), pts, args[10], obj, cls, model, name, self, flags;
+    float eye[3], dir[3], hit[3];
     char model_name[40];
-    float radius;
-    int i, room, cast;
+    int i, room;
 
     out[0] = 0;
     if (!A->ray || !ctx || !dev_in_level())
@@ -1193,60 +1239,42 @@ static void dev_aim(char *out, size_t n)
         room = (int)DEV_MEM32(ctx + TS2_CTX_ROOM);
     }
     dev_normalize(dir);
-    /* From just ahead of the eye, and again from just past the player's own
-     * character when it is what the ray hit (in first person the eye is
-     * inside it, and starting ahead of the eye did not always clear it). */
-    self = D.freecam ? 0 : dev_chr(dev_player());   /* the free camera may look at it */
-    radius = self ? DEV_MEMF(dev_player() + TS2_P_RADIUS) : 0.0f;
-    if (!(radius > 0.0f && radius < 5.0f))
-        radius = 0.55f;
-    for (i = 0; i < 3; i++)
-        start[i] = eye[i] + dir[i] * (radius + 0.2f);
+    /* The ray's object test skips an object whose flags (+0x1C) have bit 31
+     * set (sub_00154DF0). In first person the eye is inside the player's
+     * own character, and every cast from it, or from past its radius, hit
+     * that: it is marked skipped for this one call. Not under the free
+     * camera, which may look at the player. */
+    self = D.freecam ? 0 : dev_chr(dev_player());
     pts = dev_scratch(0x150);
-    for (cast = 0; cast < 4; cast++) {
-        float left = 1000.0f - sqrtf((start[0] - eye[0]) * (start[0] - eye[0]) +
-                                     (start[1] - eye[1]) * (start[1] - eye[1]) +
-                                     (start[2] - eye[2]) * (start[2] - eye[2]));
-        uint32_t room_out;
-
-        if (left < 1.0f)
-            break;
-        for (i = 0; i < 3; i++)
-            delta[i] = dir[i] * left;
-        dev_put3(pts, start);
-        dev_put3(pts + 0x10, delta);
-        hit[0] = hit[1] = hit[2] = 0.0f;
-        dev_put3(pts + 0x20, hit);
-        DEV_MEM32(pts + 0x40) = (uint32_t)-1;
-        args[0] = (uint32_t)room;
-        args[1] = pts;                  /* start */
-        args[2] = pts + 0x10;           /* delta */
-        args[3] = 0;                    /* the segment, not a line */
-        args[4] = pts + 0x20;           /* hit */
-        args[5] = pts + 0x30;           /* normal */
-        args[6] = pts + 0x40;           /* room it ended in */
-        args[7] = 0;                    /* every class */
-        args[8] = 0;                    /* the nearest hit */
-        /* What the ray passed through (a fence) goes into a list: a count
-         * and up to five records of 0x30. Zeroed scratch, never an object. */
-        for (i = 0; i < 0x100; i += 4)
-            DEV_MEM32(pts + 0x50 + (uint32_t)i) = 0;
-        args[9] = pts + 0x50;
-        obj = dev_guest_call(A->ray, pts, args, 10);
-        for (i = 0; i < 3; i++)
-            hit[i] = DEV_MEMF(pts + 0x20 + 4u * (uint32_t)i);
-        if (!self || obj != self)
-            break;
-        for (i = 0; i < 3; i++)
-            start[i] = hit[i] + dir[i] * (radius + 0.1f);
-        room_out = DEV_MEM32(pts + 0x40);
-        if (room_out < 0x1000u)
-            room = (int)room_out;
-    }
-    if (self && obj == self) {
-        snprintf(out, n, "aim: your own character");
-        return;
-    }
+    for (i = 0; i < 3; i++)
+        dir[i] *= 1000.0f;
+    dev_put3(pts, eye);
+    dev_put3(pts + 0x10, dir);
+    hit[0] = hit[1] = hit[2] = 0.0f;
+    dev_put3(pts + 0x20, hit);
+    DEV_MEM32(pts + 0x40) = (uint32_t)-1;
+    args[0] = (uint32_t)room;
+    args[1] = pts;                      /* start */
+    args[2] = pts + 0x10;               /* delta */
+    args[3] = 0;                        /* the segment, not a line */
+    args[4] = pts + 0x20;               /* hit */
+    args[5] = pts + 0x30;               /* normal */
+    args[6] = pts + 0x40;               /* room it ended in */
+    args[7] = 0;                        /* every class */
+    args[8] = 0;                        /* the nearest hit */
+    /* What the ray passed through (a fence) goes into a list: a count and
+     * up to five records of 0x30. Zeroed scratch, never an object. */
+    for (i = 0; i < 0x100; i += 4)
+        DEV_MEM32(pts + 0x50 + (uint32_t)i) = 0;
+    args[9] = pts + 0x50;
+    flags = self ? DEV_MEM32(self + TS2_O_FLAGS) : 0;
+    if (self)
+        DEV_MEM32(self + TS2_O_FLAGS) = flags | 0x80000000u;
+    obj = dev_guest_call(A->ray, pts, args, 10);
+    if (self)
+        DEV_MEM32(self + TS2_O_FLAGS) = flags;
+    for (i = 0; i < 3; i++)
+        hit[i] = DEV_MEMF(pts + 0x20 + 4u * (uint32_t)i);
     if (!dev_ptr_ok(obj)) {
         snprintf(out, n, "aim: nothing within 1000");
         return;
@@ -1319,10 +1347,11 @@ static const char *dev_menu_value(int row, char *buf, size_t n)
     case ACT_GIVE: {
         char name[32];
         uint32_t r = dev_record(dev_player());
-        int have = r && dev_in_level() && DEV_MEM32(r + TS2_R_OWNED + 4u * (uint32_t)D.item);
+        int in = r && dev_in_level();
 
         snprintf(buf, n, "< %s >%s", dev_item_name(D.item, name, sizeof name),
-                 have ? " (have)" : "");
+                 !in ? "" : !dev_item_givable(D.item) ? " (not in level)" :
+                 DEV_MEM32(r + TS2_R_OWNED + 4u * (uint32_t)D.item) ? " (have)" : "");
         return buf;
     }
     case ACT_FASTER:

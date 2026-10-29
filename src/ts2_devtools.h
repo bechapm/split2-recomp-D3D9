@@ -55,6 +55,19 @@ typedef struct Ts2DevAddrs {
      * by a walk; 0 or less for none. */
     void (*room_at)(void);
     uint32_t player_count;    /* dword: how many players; their character indices are 0..n-1 */
+    /* What an item needs loaded: the item table (a left and a right weapon
+     * type first, -1 for none), the weapon definitions (the first-person
+     * and the third-person model first), each model's loaded data in the
+     * model list (object_list's entries, at this address), and the two
+     * lookups the game makes before it falls back to a loose file on the
+     * disc: the resident resources and the level's pak, each (path), cdecl,
+     * 0 for absent. A model in none of them is not on the disc at all, and
+     * giving its item crashed. */
+    uint32_t item_table, item_stride;
+    uint32_t weapon_defs, weapon_def_stride, weapon_type_count;
+    uint32_t model_loaded;
+    void (*resident_find)(void);
+    void (*pak_find)(void);
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the
@@ -68,12 +81,12 @@ enum {
     TS2_P_YAW       = 0x148,  /* degrees; turning right lowers it */
     TS2_P_PITCH     = 0x14C,  /* degrees */
     TS2_P_CHR       = 0x1BC,  /* C */
-    TS2_P_RADIUS    = 0x0E8,  /* float: the player's radius */
     TS2_P_ROOM      = 0x87C,  /* the room the player is in */
     TS2_P_ROOM2     = 0x880,  /* the same again: a spawn sets both */
     TS2_O_ROOM      = 0x014,  /* any object: its room */
     TS2_O_MODEL     = 0x008,  /* any object: its index in the model list */
     TS2_O_CLASS     = 0x00C,  /* 2 room, 4 door, 8 character, 0x40 pickup */
+    TS2_O_FLAGS     = 0x01C,  /* bit 31: skipped by the ray's object test */
     TS2_C_POS       = 0x058,
     TS2_C_HEALTH    = 0x19C,  /* float */
     TS2_C_RECORD    = 0x124,  /* R: the character's record (items, ammo, armour) */

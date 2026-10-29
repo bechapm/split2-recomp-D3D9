@@ -175,8 +175,10 @@ how it was found.
   its look-at function, at that one call, and sets the room drawing starts
   from the same way. The view and everything made from it
   follow, Remix's camera included.
-- **The aim line** calls the game's ray test from the eye along the view, and
-  casts again from just past your own character when that is what it hit.
+- **The aim line** calls the game's ray test from the eye along the view. In
+  first person the eye is inside your own character, so for that one call
+  your character is marked as one the test skips, as the game marks objects
+  it should not hit.
 - **The HUD switch** skips the one function that draws the whole in-game HUD:
   health and armour, ammunition, the radar, the crosshair and messages. The
   gun in your hands, the pause menu and cutscenes are drawn elsewhere and
@@ -185,7 +187,11 @@ how it was found.
 - **Give item** calls the function picking an item up calls, so its name
   shows and the pickup sound plays, then fills its ammunition and puts it in
   your hands. Left and right choose from the game's 42 items, by the names
-  the game itself shows; "(have)" means you already carry it.
+  the game itself shows; "(have)" means you already carry it. A level's data
+  holds only the guns that level uses (as an arcade match loads only the
+  set chosen for it), and the game would look for any other on the disc,
+  where it is not, and crash: those are marked "(not in level)" and are not
+  given.
 
 Not possible: a full save state. The game is native code running on real
 threads with graphics objects behind it, so there is no snapshot to restore;
