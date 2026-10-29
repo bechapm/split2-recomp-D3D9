@@ -80,7 +80,13 @@ static struct {
     int      log;
     unsigned logged;
     const char *seq;        /* RECOMP_TS2_MOUSE_SEQ, what is left of it */
+    volatile int held;      /* ts2_mouse_hold */
 } M;
+
+void ts2_mouse_hold(int on)
+{
+    M.held = on;
+}
 
 static int m_ptr_ok(uint32_t a)
 {
@@ -188,7 +194,7 @@ void ts2_mouse_look(void (*look)(void))
     if (mine)
         pitch0 = M_MEMF(p + TS2_PM_PITCH);
     look();
-    if (!mine || !recomp_mouse_look())
+    if (!mine || M.held || !recomp_mouse_look())
         return;
 
     /* What look turns by itself: the player record, by the look stick.

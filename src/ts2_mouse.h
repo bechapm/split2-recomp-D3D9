@@ -36,6 +36,11 @@ enum {
     TS2_PM_HELD     = 0x998,  /* non-zero: look does nothing at all */
 };
 
+/* While held (the debugging tools' menu or free camera is up and the game
+ * reads a neutral pad), look turns nothing by the mouse and leaves its
+ * motion for whoever takes it (recomp_mouse_take). */
+void ts2_mouse_hold(int on);
+
 /* Once a frame, after the game's present. */
 void ts2_mouse_frame(void);
 
