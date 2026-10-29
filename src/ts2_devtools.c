@@ -83,13 +83,16 @@
  *     the player's movement modes moves through, is given the tool's
  *     position as its answer, so the game makes the player's eye, its
  *     character and everything else from it as from any step. The room the
- *     player is in is found by the game's own portal walk, so drawing
- *     starts from the right room. Noclip keeps god mode on, and for five
+ *     player is in is found as the game's spawn finds it, from the rooms'
+ *     bounds and floors (the portal walk where that finds none), so drawing
+ *     starts from the right room even through a wall. Noclip keeps god mode on, and for five
  *     seconds after, so landing from a height is not a death.
  *   invisible: an enemy sees its target when its sight ray reaches it;
  *     those rays (and only those: bullets are untouched) reach nothing when
- *     they reach the player. Security cameras, alarms and sensors are not
- *     covered yet.
+ *     they reach the player. And because awareness, once set, is kept with
+ *     no ray at all, the game's awareness of the players is held at
+ *     "unaware" (written and read), and an enemy whose target is the player
+ *     loses it. Security cameras, alarms and sensors are not covered yet.
  *   free camera: the eye and direction the camera update hands its
  *     look-at, replaced at that one call, and the room drawing starts from
  *     found by the portal walk, so the view, everything made from it and
@@ -306,6 +309,34 @@ static int dev_room_walk(const float from[3], int from_room, const float to[3])
     args[3] = 0;
     room = (int)dev_guest_call(A->room_walk, pts, args, 4);
     return room >= 0 && room < 0x10000 ? room : -1;
+}
+
+/* room_at(pos, 0.1, 0.1), as the player's spawn asks it: the room holding
+ * `pos` by the rooms' bounds and floors, or -1. */
+static int dev_room_at(const float pos[3])
+{
+    uint32_t pts = dev_scratch(0x10), args[3];
+    int room;
+    union { float f; uint32_t u; } tenth = { 0.1f };
+
+    if (!A->room_at)
+        return -1;
+    dev_put3(pts, pos);
+    args[0] = pts;
+    args[1] = tenth.u;
+    args[2] = tenth.u;
+    room = (int)dev_guest_call(A->room_at, pts, args, 3);
+    return room > 0 && room < 0x1000 ? room : -1;
+}
+
+/* The room holding `to`: by position first, since a walk from `from` crosses
+ * no portal through a wall and stays in the old room (then only the sky was
+ * drawn); by the walk where the position finds none. */
+static int dev_room_find(const float from[3], int from_room, const float to[3])
+{
+    int room = dev_room_at(to);
+
+    return room >= 0 ? room : dev_room_walk(from, from_room, to);
 }
 
 static void dev_say(const char *fmt, ...)
@@ -688,9 +719,16 @@ void ts2_dev_sweep(void (*sweep)(void))
         b[i] = D.tp_sweeps > 0 ? D.tp[i] : D.nc_pos[i];
         DEV_MEMF(to + 4u * (uint32_t)i) = b[i];
     }
-    room = dev_room_walk(a, (int)DEV_MEM32(p + TS2_P_ROOM), b);
-    if (room >= 0)
+    room = dev_room_find(a, (int)DEV_MEM32(p + TS2_P_ROOM), b);
+    if (room >= 0) {
+        uint32_t c = dev_chr(p);
+
+        /* where the spawn puts it */
         DEV_MEM32(p + TS2_P_ROOM) = (uint32_t)room;
+        DEV_MEM32(p + TS2_P_ROOM2) = (uint32_t)room;
+        if (c)
+            DEV_MEM32(c + TS2_O_ROOM) = (uint32_t)room;
+    }
     if (D.tp_sweeps > 0) {
         D.tp_sweeps--;
         if (D.tp_has_angles) {
@@ -725,6 +763,53 @@ void ts2_dev_ray(void (*ray)(void))
         }
 }
 
+/* A character index that is a player's. */
+static int dev_is_player_index(uint32_t i)
+{
+    uint32_t n = A->player_count ? DEV_MEM32(A->player_count) : 0;
+
+    return n <= 4 && i < n;
+}
+
+/* set(a, b, state) makes a and b aware of each other: under invisibility,
+ * a player is made unaware instead (state 0), so no enemy takes it up by
+ * any route. */
+void ts2_dev_aware_set(void (*set)(void))
+{
+    if (D.invisible && (dev_is_player_index(DEV_MEM32(g_esp + 4)) ||
+                        dev_is_player_index(DEV_MEM32(g_esp + 8))))
+        DEV_MEM32(g_esp + 12) = 0;
+    set();
+}
+
+/* get(a, b): the state, 0 unaware. Under invisibility a player is unnoticed
+ * whatever was set before it was turned on. */
+void ts2_dev_aware_get(void (*get)(void))
+{
+    if (D.invisible && (dev_is_player_index(DEV_MEM32(g_esp + 4)) ||
+                        dev_is_player_index(DEV_MEM32(g_esp + 8)))) {
+        g_eax = 0;
+        g_esp += 4;                     /* ret */
+        return;
+    }
+    get();
+}
+
+/* check(R, refresh): whether an enemy's target R+0x1300 is still one. Under
+ * invisibility an enemy whose target is the player has none, and the game's
+ * own check then says so. */
+void ts2_dev_target_check(void (*check)(void))
+{
+    uint32_t r = DEV_MEM32(g_esp + 4), c;
+
+    if (D.invisible && dev_ptr_ok(r)) {
+        c = dev_chr(dev_player());
+        if (c && DEV_MEM32(r + TS2_R_TARGET) == c)
+            DEV_MEM32(r + TS2_R_TARGET) = 0;
+    }
+    check();
+}
+
 /* look_at(dst, eye x y z, forward x y z, up x y z), all by value: at the
  * camera update's call, the free camera's eye and forward instead, and the
  * room drawing starts from walked to from where it was found last. */
@@ -745,7 +830,7 @@ void ts2_dev_look_at(void (*look_at)(void))
     }
     ctx = dev_context();
     if (ctx) {
-        room = dev_room_walk(D.fc_room_eye, D.fc_room, D.fc_eye);
+        room = dev_room_find(D.fc_room_eye, D.fc_room, D.fc_eye);
         if (room >= 0) {
             D.fc_room = room;
             memcpy(D.fc_room_eye, D.fc_eye, sizeof D.fc_eye);
@@ -1090,6 +1175,7 @@ static void dev_aim(char *out, size_t n)
     uint32_t ctx = dev_context(), pts, args[10], obj = 0, cls, model, name, self;
     float eye[3], dir[3], hit[3], start[3], delta[3];
     char model_name[40];
+    float radius;
     int i, room, cast;
 
     out[0] = 0;
@@ -1111,8 +1197,11 @@ static void dev_aim(char *out, size_t n)
      * character when it is what the ray hit (in first person the eye is
      * inside it, and starting ahead of the eye did not always clear it). */
     self = D.freecam ? 0 : dev_chr(dev_player());   /* the free camera may look at it */
+    radius = self ? DEV_MEMF(dev_player() + TS2_P_RADIUS) : 0.0f;
+    if (!(radius > 0.0f && radius < 5.0f))
+        radius = 0.55f;
     for (i = 0; i < 3; i++)
-        start[i] = eye[i] + dir[i] * 0.75f;
+        start[i] = eye[i] + dir[i] * (radius + 0.2f);
     pts = dev_scratch(0x150);
     for (cast = 0; cast < 4; cast++) {
         float left = 1000.0f - sqrtf((start[0] - eye[0]) * (start[0] - eye[0]) +
@@ -1149,11 +1238,14 @@ static void dev_aim(char *out, size_t n)
         if (!self || obj != self)
             break;
         for (i = 0; i < 3; i++)
-            start[i] = hit[i] + dir[i] * 0.1f;
+            start[i] = hit[i] + dir[i] * (radius + 0.1f);
         room_out = DEV_MEM32(pts + 0x40);
         if (room_out < 0x1000u)
             room = (int)room_out;
-        obj = 0;
+    }
+    if (self && obj == self) {
+        snprintf(out, n, "aim: your own character");
+        return;
     }
     if (!dev_ptr_ok(obj)) {
         snprintf(out, n, "aim: nothing within 1000");

@@ -50,6 +50,11 @@ typedef struct Ts2DevAddrs {
     uint32_t item_name_stride;
     uint32_t text_table;      /* the English text: a string pointer per text id */
     uint32_t text_count;
+    /* room_at(float *pos, float up, float half), cdecl: the room that holds
+     * `pos`, found from the rooms' bounding boxes and the floor below it, not
+     * by a walk; 0 or less for none. */
+    void (*room_at)(void);
+    uint32_t player_count;    /* dword: how many players; their character indices are 0..n-1 */
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the
@@ -63,7 +68,10 @@ enum {
     TS2_P_YAW       = 0x148,  /* degrees; turning right lowers it */
     TS2_P_PITCH     = 0x14C,  /* degrees */
     TS2_P_CHR       = 0x1BC,  /* C */
+    TS2_P_RADIUS    = 0x0E8,  /* float: the player's radius */
     TS2_P_ROOM      = 0x87C,  /* the room the player is in */
+    TS2_P_ROOM2     = 0x880,  /* the same again: a spawn sets both */
+    TS2_O_ROOM      = 0x014,  /* any object: its room */
     TS2_O_MODEL     = 0x008,  /* any object: its index in the model list */
     TS2_O_CLASS     = 0x00C,  /* 2 room, 4 door, 8 character, 0x40 pickup */
     TS2_C_POS       = 0x058,
@@ -71,6 +79,7 @@ enum {
     TS2_C_RECORD    = 0x124,  /* R: the character's record (items, ammo, armour) */
     TS2_R_ITEM      = 0x0C8,  /* the item in hand */
     TS2_R_OWNED     = 0x984,  /* a dword per item: owned */
+    TS2_R_TARGET    = 0x1300, /* an enemy's target: a character object */
     TS2_CTX_WORLD   = 0x180,  /* the camera's world matrix: right, up, forward, eye rows */
     TS2_CTX_EYE     = 0x27C,  /* the eye the camera update hands the look-at */
     TS2_CTX_ROOM    = 0x294,  /* the room drawing starts from */
@@ -103,5 +112,14 @@ void ts2_dev_look_at(void (*look_at)(void));
  * and draws all of it: health and armour, ammo, the radar, the crosshair,
  * messages): not drawn while the tools hide it. */
 void ts2_dev_hud(void (*hud)(void));
+
+/* The enemies' awareness of each other and of the players: set(a, b,
+ * state) and get(a, b) by character index, and an enemy's check that its
+ * target is still one (check(R, refresh)). Under invisibility nothing
+ * becomes aware of a player, a player reads as unnoticed, and an enemy
+ * whose target is the player has none. */
+void ts2_dev_aware_set(void (*set)(void));
+void ts2_dev_aware_get(void (*get)(void));
+void ts2_dev_target_check(void (*check)(void));
 
 #endif

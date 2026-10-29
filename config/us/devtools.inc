@@ -15,6 +15,8 @@ extern void sub_00020160(void);
  * below. */
 extern void sub_000B5E90(void);
 extern void sub_000AFF50(void);
+/* room_at sub_0011FF10, below. */
+extern void sub_0011FF10(void);
 
 static const Ts2DevAddrs k_ts2_dev = {
     /* player_base: [0x00497028] is the local player records, 0xD3C each;
@@ -85,4 +87,16 @@ static const Ts2DevAddrs k_ts2_dev = {
     /* text_table, text_count: the English strings, a pointer per text id
      * (the language table 0x00335EA8's English entry; 2770 ids; code). */
     0x00335EC0, 2770,
+    /* room_at: sub_0011FF10(pos, up, half), 35 callers. It lists the rooms
+     * whose bounding boxes (the room table [0x3534D4] + room * 0xB0, min at
+     * +0x24, max at +0x30) overlap a box round `pos` (sub_0001E550), keeps
+     * the one with the highest floor below the point (sub_0011FC50), falls
+     * back to a portal walk from the last room it found, and returns the
+     * room (>0) or <=0 for none. The player's spawn sub_00142C90 calls it
+     * at 0x0014301D with up = half = 0.1 and stores the room in P+0x87C,
+     * P+0x880 and C+0x14 (code). */
+    sub_0011FF10,
+    /* player_count: the players are character indices 0..[0x4A46F0]-1; the
+     * awareness table is sized from it (code). */
+    0x004A46F0,
 };

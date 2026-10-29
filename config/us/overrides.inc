@@ -82,6 +82,23 @@ void sub_000E67F0(void) { ts2_dev_look_at(sub_000E67F0_gen); }
 extern void sub_000C92F0_gen(void);
 void sub_000C92F0(void) { ts2_dev_hud(sub_000C92F0_gen); }
 
+/* The enemies' awareness: a 12-byte record per pair of character indices
+ * at [0x35821C] (state at +0, 0 unaware). sub_0005F2A0(a, b, state) is its
+ * only writer (both directions; a player made known alerts the AI, R+0x128C
+ * |= 0x10000), called from the sight routines sub_00080590 (story) and
+ * sub_0006B450 (arcade) and the player's own entry sub_00147A10;
+ * sub_0005F430(a, b) reads it (9 callers, the damage reaction among them);
+ * sub_0005F4F0(R, refresh) is an enemy's check that its target R+0x1300 is
+ * still one (46 callers; 0 for none). Wrapped for the debugging tools'
+ * invisibility: the sight rays alone did not stop guards, because
+ * awareness, once set, is kept with no ray at all. */
+extern void sub_0005F2A0_gen(void);
+void sub_0005F2A0(void) { ts2_dev_aware_set(sub_0005F2A0_gen); }
+extern void sub_0005F430_gen(void);
+void sub_0005F430(void) { ts2_dev_aware_get(sub_0005F430_gen); }
+extern void sub_0005F4F0_gen(void);
+void sub_0005F4F0(void) { ts2_dev_target_check(sub_0005F4F0_gen); }
+
 /* present is sub_001CC100 (PAL 0x001CC530): the only function in the game's
  * code that calls D3DDevice_Swap. */
 extern void sub_001CC100_gen(void);

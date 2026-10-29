@@ -23,4 +23,5 @@ static const Ts2DevAddrs k_ts2_dev = {
     0, 0,               /* give item, fill ammo */
     0, 0, 0,            /* item names */
     0, 0,               /* English text */
+    0, 0,               /* room by position, player count */
 };
