@@ -159,17 +159,21 @@ how it was found.
   rate: frame interpolation is.
 - **Invisible** works on the enemies' eyesight: an enemy counts its target
   as seen when its line-of-sight ray reaches it, and those rays (five call
-  sites in the AI) reach nothing when they reach you. Bullets are untouched.
-  Not yet covered: security cameras, alarms and sensors, and enemies that
+  sites in the AI) reach nothing when they reach you. That alone did not
+  stop guards, because once an enemy knows about you it keeps knowing with
+  no ray at all, so the game's record of who knows about whom is held at
+  "unaware" for you, and an enemy whose target is you loses it. Bullets are
+  untouched. Not yet covered: security cameras, alarms and sensors, and enemies that
   hear gunfire.
 - **Noclip and teleport** answer the character sweep, the one function every
   one of the player's movement modes moves through, with the tool's
   position, so the game builds your eye, your character and the rest from
-  it as from any step. The room you are in is found with the game's own
-  portal walk.
+  it as from any step. The room you are in is found the way the game finds
+  it when you spawn, from the rooms' bounds and floors, so going through a
+  wall does not leave the level drawing the room you left.
 - **The free camera** replaces the eye and direction the camera update hands
   its look-at function, at that one call, and sets the room drawing starts
-  from by the same portal walk. The view and everything made from it
+  from the same way. The view and everything made from it
   follow, Remix's camera included.
 - **The aim line** calls the game's ray test from the eye along the view, and
   casts again from just past your own character when that is what it hit.
