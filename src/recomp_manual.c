@@ -505,25 +505,27 @@ static int g_ts2_frame_camera, g_ts2_frame_front_end, g_ts2_frame_world;
  *
  * A frame that draws no level (the front end, a loading screen) leaves the
  * camera at identity from the next frame on, as before (ts2_present).
- * RECOMP_TS2_REMIX_CAMERA=0 never sets it, for comparison.
+ * RECOMP_TS2_REMIX_CAMERA=0 never sets it, for comparison; =t gives the
+ * matrix transposed, to test the convention.
  */
 extern void xbox_D3D8SetRemixCamera(const float *view);
 
 static void ts2_draw_world(void (*draw_world)(void), uint32_t context_global)
 {
-    static int on = -1;
+    static int on = -1, transpose;
     uint32_t context = TS2_MEM32(context_global), view;
 
     if (on < 0) {
         const char *e = getenv("RECOMP_TS2_REMIX_CAMERA");
         on = !(e && e[0] == '0');
+        transpose = e && e[0] == 't';
     }
     if (on && context && (view = TS2_MEM32(context + 0x208)) != 0) {
         float m[16];
         int i;
 
         for (i = 0; i < 16; i++)
-            m[i] = TS2_MEMF(view + 4u * (uint32_t)i);
+            m[transpose ? (i % 4) * 4 + i / 4 : i] = TS2_MEMF(view + 4u * (uint32_t)i);
         xbox_D3D8SetRemixCamera(m);
         g_ts2_frame_world = 1;
     }
