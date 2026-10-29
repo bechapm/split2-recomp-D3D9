@@ -3,8 +3,9 @@
 Tools for setting up a test scene and holding it still: god mode, infinite
 ammo, invisibility to enemies, every unlock, stopping the game's clock or
 changing its speed, a readout of where you are and what the crosshair is
-on, saving and returning to a position, a free camera, noclip and a
-wireframe view, all from a menu on screen. They are TimeSplitters 2's own
+on, saving and returning to a position, a free camera, noclip, a
+wireframe view, hiding the HUD and giving yourself any weapon or item, all
+from a menu on screen. They are TimeSplitters 2's own
 (`src/ts2_devtools.c`); the toolkit only supplies keys, the overlay's lines
 and the pad. USA release only for now, apart from unlock everything, which
 PAL has too.
@@ -13,7 +14,8 @@ PAL has too.
 
 **F1**, or both sticks clicked in together (**L3+R3**), opens and closes it.
 Up and down (the D-pad, the left stick or the arrow keys) choose a row, **A**
-or **Enter** sets it, left and right change a value (the game speed), **B**
+or **Enter** sets it, left and right change a value (the game speed, the
+item to give), **B**
 or **Esc** closes. The game reads an idle controller while the menu is open.
 Choosing the free camera or noclip closes the menu, so the controller drives
 them.
@@ -33,6 +35,8 @@ TS2 DEV MENU
   Save position
   Back to saved position
   Wireframe                off
+  HUD                      ON
+  Give item                < Sniper Rifle >
 A/Enter set  left/right change  B/Esc close
 ```
 
@@ -51,6 +55,8 @@ per line, or set the environment variable beside it:
 | `ts2_unlock_all = 1` | `RECOMP_TS2_UNLOCK_ALL` | Every character, level and cheat |
 | `ts2_readout = 1` | `RECOMP_TS2_READOUT` | The readout from the start |
 | `ts2_speed = 0.5` | `RECOMP_TS2_SPEED` | The game's speed: 0.25, 0.5, 1, 2 or 4 |
+| `ts2_hud = 0` | `RECOMP_TS2_HUD` | The game's HUD hidden from the start |
+| `ts2_give_item = 11` | `RECOMP_TS2_GIVE_ITEM` | The item "Give item" starts on (its number in the game's item list) |
 | `ts2_teleport = x,y,z[,yaw,pitch]` | `RECOMP_TS2_TELEPORT` | Where you are put once the first level is playing |
 | `ts2_dev_seq = FRAME:ACTION,...` | `RECOMP_TS2_DEV_SEQ` | The keys' actions at given frames (below) |
 | | `RECOMP_TS2_POSITIONS` | Where saved positions are kept (default `ts2_positions.txt` beside the executable) |
@@ -74,6 +80,7 @@ The menu's items on keys, only while the game's window is in front.
 | Page Down | One frame forward while the clock is stopped |
 | End | Wireframe view (every draw as lines; `RECOMP_WIREFRAME=1` starts with it on) |
 | - and + | Slower and faster |
+| Insert | The game's HUD on and off |
 
 F9, F10 and F11 stay the toolkit's: the frame-rate counter, the frame cap and
 a frame capture.
@@ -119,7 +126,7 @@ RECOMP_TS2_DEV_SEQ=4200:freeze,4210:freecam,4600:step,4700:freeze,4710:freecam
 ```
 
 The actions are `readout god ammo invisible unlock save load freecam noclip
-freeze step wireframe faster slower menu`. The free camera and noclip read controller 1, so
+freeze step wireframe faster slower menu hud give itemnext itemprev`. The free camera and noclip read controller 1, so
 `RECOMP_INPUT_SEQ` moves them (`<ms>:<control>:<hold ms>`, for example
 `90000:lstick_up:2000,93000:rstick_right:500,94000:rt:800`).
 `ts2_teleport` and a saved position make a test start from the same spot
@@ -164,8 +171,17 @@ how it was found.
   its look-at function, at that one call, and sets the room drawing starts
   from by the same portal walk. The view and everything made from it
   follow, Remix's camera included.
-- **The aim line** calls the game's ray test from the eye along the view, past
-  your own character.
+- **The aim line** calls the game's ray test from the eye along the view, and
+  casts again from just past your own character when that is what it hit.
+- **The HUD switch** skips the one function that draws the whole in-game HUD:
+  health and armour, ammunition, the radar, the crosshair and messages. The
+  gun in your hands, the pause menu and cutscenes are drawn elsewhere and
+  stay. A HUD flash or message that comes while it is hidden shows when it is
+  back.
+- **Give item** calls the function picking an item up calls, so its name
+  shows and the pickup sound plays, then fills its ammunition and puts it in
+  your hands. Left and right choose from the game's 42 items, by the names
+  the game itself shows; "(have)" means you already carry it.
 
 Not possible: a full save state. The game is native code running on real
 threads with graphics objects behind it, so there is no snapshot to restore;

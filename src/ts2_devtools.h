@@ -40,6 +40,16 @@ typedef struct Ts2DevAddrs {
     /* The return addresses of the enemies' "can I see my target" rays: the
      * ones invisibility answers "nothing" for when they hit the player. */
     uint32_t sight_returns[8];
+    /* give_item(R, item), cdecl: what picking an item up does -- it is owned
+     * from then on, its name is shown and the pickup sound plays. */
+    void (*give_item)(void);
+    /* fill_ammo(R, item), cdecl: the item's ammunition to its maximum. */
+    void (*fill_ammo)(void);
+    uint32_t item_count;      /* items in the game's item table */
+    uint32_t item_names;      /* word: item 0's name, as a text id */
+    uint32_t item_name_stride;
+    uint32_t text_table;      /* the English text: a string pointer per text id */
+    uint32_t text_count;
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the
@@ -58,6 +68,9 @@ enum {
     TS2_O_CLASS     = 0x00C,  /* 2 room, 4 door, 8 character, 0x40 pickup */
     TS2_C_POS       = 0x058,
     TS2_C_HEALTH    = 0x19C,  /* float */
+    TS2_C_RECORD    = 0x124,  /* R: the character's record (items, ammo, armour) */
+    TS2_R_ITEM      = 0x0C8,  /* the item in hand */
+    TS2_R_OWNED     = 0x984,  /* a dword per item: owned */
     TS2_CTX_WORLD   = 0x180,  /* the camera's world matrix: right, up, forward, eye rows */
     TS2_CTX_EYE     = 0x27C,  /* the eye the camera update hands the look-at */
     TS2_CTX_ROOM    = 0x294,  /* the room drawing starts from */
@@ -85,5 +98,10 @@ void ts2_dev_ray(void (*ray)(void));
  * forward xyz, up xyz), all by value): the free camera's eye and direction
  * at the camera update's own call. */
 void ts2_dev_look_at(void (*look_at)(void));
+
+/* The in-game HUD (wraps the release's HUD draw, which takes no arguments
+ * and draws all of it: health and armour, ammo, the radar, the crosshair,
+ * messages): not drawn while the tools hide it. */
+void ts2_dev_hud(void (*hud)(void));
 
 #endif

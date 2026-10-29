@@ -74,6 +74,14 @@ void sub_00020160(void) { ts2_dev_ray(sub_00020160_gen); }
 extern void sub_000E67F0_gen(void);
 void sub_000E67F0(void) { ts2_dev_look_at(sub_000E67F0_gen); }
 
+/* hud is sub_000C92F0, no arguments: it draws the whole in-game HUD (the
+ * health and armour arcs, ammunition, the radar, the crosshair, messages),
+ * entered only by the tail jump at 0x000DE8DF in the per-viewport draw
+ * sub_000DE610. The gun in hand, the pause menu and cutscenes are drawn
+ * elsewhere. Wrapped for the debugging tools' HUD switch, which skips it. */
+extern void sub_000C92F0_gen(void);
+void sub_000C92F0(void) { ts2_dev_hud(sub_000C92F0_gen); }
+
 /* present is sub_001CC100 (PAL 0x001CC530): the only function in the game's
  * code that calls D3DDevice_Swap. */
 extern void sub_001CC100_gen(void);

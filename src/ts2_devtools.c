@@ -33,7 +33,10 @@
  *                          the keys' actions at given frames (from the first
  *                          present), for scripted runs: readout god ammo
  *                          unlock save load freecam noclip freeze step
- *                          invisible wireframe faster slower menu
+ *                          invisible wireframe faster slower menu hud give
+ *                          itemnext itemprev
+ *   ts2_hud = 0            RECOMP_TS2_HUD          the game's HUD hidden from the start
+ *   ts2_give_item = 11     RECOMP_TS2_GIVE_ITEM    the item "Give item" starts on
  *   ts2_teleport = x,y,z[,yaw,pitch]  RECOMP_TS2_TELEPORT
  *                          where the player is put once the first level is
  *                          playing: a repeatable spot for a scripted run
@@ -47,6 +50,7 @@
  *   F7  free camera        F8  noclip          F12 or Pause: stop the clock
  *   Page Down: one frame forward while the clock is stopped
  *   End  wireframe (the toolkit's, RECOMP_WIREFRAME)
+ *   Insert  the game's HUD on and off
  *   - and +  slower and faster
  *
  * Saved positions are kept per level in ts2_positions.txt beside the
@@ -92,6 +96,12 @@
  *     the camera RTX Remix is given all follow, and rooms are drawn from
  *     where the camera is. The pad (and the keyboard) drive the camera while
  *     it is on, and the game reads a neutral pad.
+ *   HUD: the game's HUD draw (all of it: health, ammunition, the radar, the
+ *     crosshair, messages) returns at once. The gun in hand stays. A HUD
+ *     flash or message waiting meanwhile shows when it is back.
+ *   give item: what picking the item up does (the game's own function: its
+ *     name shown, the pickup sound), then its ammunition filled and the item
+ *     put in hand.
  */
 #include <math.h>
 #include <stdarg.h>
@@ -130,6 +140,7 @@ extern int         xbox_InputRead(unsigned port, uint16_t *buttons, uint8_t anal
 #define DEV_MEM32(a) (*(volatile uint32_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 #define DEV_MEMF(a)  (*(volatile float *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 #define DEV_MEM8(a)  (*(volatile uint8_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
+#define DEV_MEM16(a) (*(volatile uint16_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 
 /* Windows virtual-key codes (the toolkit translates them off Windows). */
 enum {
@@ -137,7 +148,7 @@ enum {
     VK_F12_ = 0x7B, VK_PAUSE_ = 0x13, VK_NEXT_ = 0x22, VK_SHIFT_ = 0x10,
     VK_SPACE_ = 0x20, VK_CONTROL_ = 0x11, VK_HOME_ = 0x24, VK_END_ = 0x23,
     VK_RETURN_ = 0x0D, VK_ESCAPE_ = 0x1B, VK_MINUS_ = 0xBD, VK_PLUS_ = 0xBB,
-    VK_SUBTRACT_ = 0x6D, VK_ADD_ = 0x6B,
+    VK_SUBTRACT_ = 0x6D, VK_ADD_ = 0x6B, VK_INSERT_ = 0x2D,
     VK_LEFT_ = 0x25, VK_UP_, VK_RIGHT_, VK_DOWN_,
 };
 
@@ -161,6 +172,8 @@ static struct {
     int  god, ammo, unlock;            /* what the player asked for */
     int  god_written, ammo_written, unlock_written;
     int  frozen, step, freecam, noclip, invisible;
+    int  hud_off;                       /* the game's HUD not drawn */
+    int  item;                          /* what "Give item" gives */
     int  god_hold;                      /* frames god stays on after noclip */
     int  speed;                         /* index in k_dev_speeds */
     float speed_carry;                  /* the fraction of a tick not yet run */
@@ -742,19 +755,103 @@ void ts2_dev_look_at(void (*look_at)(void))
     look_at();
 }
 
+/* hud() draws the in-game HUD, and takes no arguments: hidden, it returns
+ * at once, popping its return address as its own ret would. */
+void ts2_dev_hud(void (*hud)(void))
+{
+    if (D.hud_off) {
+        g_esp += 4;                     /* ret */
+        return;
+    }
+    hud();
+}
+
+/* ── items ─────────────────────────────────────────────────── */
+
+/* The English text for a text id, into buf: the table's strings are bytes or
+ * UTF-16, and either is copied as ASCII. Empty when there is none. */
+static const char *dev_text(uint32_t id, char *buf, size_t n)
+{
+    uint32_t s;
+    size_t i;
+    int wide;
+
+    buf[0] = 0;
+    if (!A->text_table || id >= A->text_count || n < 2)
+        return buf;
+    s = DEV_MEM32(A->text_table + id * 4u);
+    if (!dev_ptr_ok(s))
+        return buf;
+    wide = DEV_MEM8(s) && !DEV_MEM8(s + 1);
+    for (i = 0; i < n - 1; i++) {
+        uint32_t ch = wide ? DEV_MEM16(s + 2u * (uint32_t)i) : DEV_MEM8(s + (uint32_t)i);
+
+        if (!ch)
+            break;
+        buf[i] = ch >= 32 && ch < 127 ? (char)ch : '?';
+    }
+    buf[i] = 0;
+    return buf;
+}
+
+static const char *dev_item_name(int item, char *buf, size_t n)
+{
+    if (A->item_names)
+        dev_text(DEV_MEM16(A->item_names + (uint32_t)item * A->item_name_stride), buf, n);
+    else
+        buf[0] = 0;
+    if (!buf[0])
+        snprintf(buf, n, "item %d", item);
+    return buf;
+}
+
+/* Player 1's character record (R), or 0. */
+static uint32_t dev_record(uint32_t p)
+{
+    uint32_t c = dev_chr(p), r = c ? DEV_MEM32(c + TS2_C_RECORD) : 0;
+
+    return dev_ptr_ok(r) ? r : 0;
+}
+
+/* The chosen item, as picking it up gives it (its name shown, the pickup
+ * sound), its ammunition full, and in hand. */
+static void dev_give(uint32_t p)
+{
+    uint32_t r = dev_record(p), args[2];
+    char name[40];
+
+    dev_item_name(D.item, name, sizeof name);
+    if (!A->give_item) {
+        dev_say("give item: not found in this release");
+        return;
+    }
+    if (!r || !dev_in_level()) {
+        dev_say("give item: not in a level");
+        return;
+    }
+    args[0] = r;
+    args[1] = (uint32_t)D.item;
+    dev_guest_call(A->give_item, dev_scratch(0), args, 2);
+    if (A->fill_ammo)
+        dev_guest_call(A->fill_ammo, dev_scratch(0), args, 2);
+    DEV_MEM32(r + TS2_R_ITEM) = (uint32_t)D.item;
+    dev_say("gave %s (%d)", name, D.item);
+}
+
 /* ── once a frame ──────────────────────────────────────────── */
 
 /* What a key (or a step of ts2_dev_seq) does. */
 enum {
     ACT_READOUT, ACT_GOD, ACT_AMMO, ACT_UNLOCK, ACT_SAVE, ACT_LOAD,
     ACT_FREECAM, ACT_NOCLIP, ACT_FREEZE, ACT_STEP, ACT_INVISIBLE, ACT_WIREFRAME,
-    ACT_FASTER, ACT_SLOWER, ACT_MENU, ACT_COUNT
+    ACT_FASTER, ACT_SLOWER, ACT_MENU, ACT_HUD, ACT_GIVE, ACT_ITEM_NEXT, ACT_ITEM_PREV,
+    ACT_COUNT
 };
 
 static const char *const k_dev_actions[ACT_COUNT] = {
     "readout", "god", "ammo", "unlock", "save", "load",
     "freecam", "noclip", "freeze", "step", "invisible", "wireframe",
-    "faster", "slower", "menu",
+    "faster", "slower", "menu", "hud", "give", "itemnext", "itemprev",
 };
 
 static void dev_action(int act, uint32_t p)
@@ -863,6 +960,21 @@ static void dev_action(int act, uint32_t p)
         xbox_D3D8SetWireframe(!xbox_D3D8Wireframe());
         dev_say("wireframe %s", xbox_D3D8Wireframe() ? "ON" : "off");
         break;
+    case ACT_HUD:
+        D.hud_off = !D.hud_off;
+        dev_say("HUD %s", D.hud_off ? "hidden" : "shown");
+        break;
+    case ACT_GIVE:
+        dev_give(p);
+        break;
+    case ACT_ITEM_NEXT:
+    case ACT_ITEM_PREV:
+        if (A->item_count) {
+            int n = (int)A->item_count;
+
+            D.item = (D.item + (act == ACT_ITEM_NEXT ? 1 : n - 1)) % n;
+        }
+        break;
     case ACT_INVISIBLE:
         D.invisible = !D.invisible;
         dev_say(A->sight_returns[0] ? "invisible to enemies %s" : "invisible: not found",
@@ -880,7 +992,7 @@ static void dev_keys(uint32_t p)
         { VK_F7_, ACT_FREECAM }, { VK_F8_, ACT_NOCLIP },  { VK_F12_, ACT_FREEZE },
         { VK_PAUSE_, ACT_FREEZE }, { VK_NEXT_, ACT_STEP }, { VK_END_, ACT_WIREFRAME },
         { VK_MINUS_, ACT_SLOWER }, { VK_SUBTRACT_, ACT_SLOWER },
-        { VK_PLUS_, ACT_FASTER },  { VK_ADD_, ACT_FASTER },
+        { VK_PLUS_, ACT_FASTER },  { VK_ADD_, ACT_FASTER }, { VK_INSERT_, ACT_HUD },
     };
     size_t i;
 
@@ -954,15 +1066,19 @@ static void dev_configure(void)
     D.unlock = recomp_config_bool("RECOMP_TS2_UNLOCK_ALL", "ts2_unlock_all", 0);
     D.readout = recomp_config_bool("RECOMP_TS2_READOUT", "ts2_readout", 0);
     D.invisible = recomp_config_bool("RECOMP_TS2_INVISIBLE", "ts2_invisible", 0);
+    D.hud_off = !recomp_config_bool("RECOMP_TS2_HUD", "ts2_hud", 1);
+    v = recomp_config_lookup("RECOMP_TS2_GIVE_ITEM", "ts2_give_item");
+    if (v && *v && A->item_count)
+        D.item = (int)((unsigned)atoi(v) % A->item_count);
     dev_seq_parse(recomp_config_lookup("RECOMP_TS2_DEV_SEQ", "ts2_dev_seq"));
     v = recomp_config_lookup("RECOMP_TS2_TELEPORT", "ts2_teleport");
     if (v && *v)
         D.start_tp_pending = dev_parse_spot(v, D.start_tp, &D.start_tp_angles);
     fprintf(stderr, "[TS2-DEV] menu and keys %s (F1 or L3+R3: the menu), god %d, "
-            "infinite ammo %d, unlock all %d, invisible %d, readout %d, speed %gx%s "
+            "infinite ammo %d, unlock all %d, invisible %d, readout %d, HUD %d, speed %gx%s "
             "(src/ts2_devtools.c, docs/devtools.md)\n",
             D.keys ? "on" : "off (ts2_dev = 0)", D.god, D.ammo, D.unlock, D.invisible,
-            D.readout, (double)k_dev_speeds[D.speed],
+            D.readout, !D.hud_off, (double)k_dev_speeds[D.speed],
             D.start_tp_pending ? ", teleport at the first level" : "");
 }
 
@@ -971,10 +1087,10 @@ static void dev_configure(void)
  * Writes a line, or nothing without a ray. */
 static void dev_aim(char *out, size_t n)
 {
-    uint32_t ctx = dev_context(), pts, args[10], obj, cls, model, name;
-    float eye[3], dir[3], hit[3], start[3];
+    uint32_t ctx = dev_context(), pts, args[10], obj = 0, cls, model, name, self;
+    float eye[3], dir[3], hit[3], start[3], delta[3];
     char model_name[40];
-    int i, room;
+    int i, room, cast;
 
     out[0] = 0;
     if (!A->ray || !ctx || !dev_in_level())
@@ -991,35 +1107,54 @@ static void dev_aim(char *out, size_t n)
         room = (int)DEV_MEM32(ctx + TS2_CTX_ROOM);
     }
     dev_normalize(dir);
-    /* From just ahead of the eye: from the eye itself the ray hit the
-     * player's own character nearly every frame. */
-    for (i = 0; i < 3; i++) {
-        start[i] = eye[i] + dir[i] * 0.75f;
-        dir[i] *= 1000.0f;
-    }
-    pts = dev_scratch(0x150);
-    dev_put3(pts, start);
-    dev_put3(pts + 0x10, dir);
-    hit[0] = hit[1] = hit[2] = 0.0f;
-    dev_put3(pts + 0x20, hit);
-    DEV_MEM32(pts + 0x40) = (uint32_t)-1;
-    args[0] = (uint32_t)room;
-    args[1] = pts;                      /* start */
-    args[2] = pts + 0x10;               /* delta */
-    args[3] = 0;                        /* the segment, not a line */
-    args[4] = pts + 0x20;               /* hit */
-    args[5] = pts + 0x30;               /* normal */
-    args[6] = pts + 0x40;               /* room it ended in */
-    args[7] = 0;                        /* every class */
-    args[8] = 0;                        /* the nearest hit */
-    /* What the ray passed through (a fence) goes into a list: a count and
-     * up to five records of 0x30. Zeroed scratch, never an object. */
-    for (i = 0; i < 0x100; i += 4)
-        DEV_MEM32(pts + 0x50 + (uint32_t)i) = 0;
-    args[9] = pts + 0x50;
-    obj = dev_guest_call(A->ray, pts, args, 10);
+    /* From just ahead of the eye, and again from just past the player's own
+     * character when it is what the ray hit (in first person the eye is
+     * inside it, and starting ahead of the eye did not always clear it). */
+    self = D.freecam ? 0 : dev_chr(dev_player());   /* the free camera may look at it */
     for (i = 0; i < 3; i++)
-        hit[i] = DEV_MEMF(pts + 0x20 + 4u * (uint32_t)i);
+        start[i] = eye[i] + dir[i] * 0.75f;
+    pts = dev_scratch(0x150);
+    for (cast = 0; cast < 4; cast++) {
+        float left = 1000.0f - sqrtf((start[0] - eye[0]) * (start[0] - eye[0]) +
+                                     (start[1] - eye[1]) * (start[1] - eye[1]) +
+                                     (start[2] - eye[2]) * (start[2] - eye[2]));
+        uint32_t room_out;
+
+        if (left < 1.0f)
+            break;
+        for (i = 0; i < 3; i++)
+            delta[i] = dir[i] * left;
+        dev_put3(pts, start);
+        dev_put3(pts + 0x10, delta);
+        hit[0] = hit[1] = hit[2] = 0.0f;
+        dev_put3(pts + 0x20, hit);
+        DEV_MEM32(pts + 0x40) = (uint32_t)-1;
+        args[0] = (uint32_t)room;
+        args[1] = pts;                  /* start */
+        args[2] = pts + 0x10;           /* delta */
+        args[3] = 0;                    /* the segment, not a line */
+        args[4] = pts + 0x20;           /* hit */
+        args[5] = pts + 0x30;           /* normal */
+        args[6] = pts + 0x40;           /* room it ended in */
+        args[7] = 0;                    /* every class */
+        args[8] = 0;                    /* the nearest hit */
+        /* What the ray passed through (a fence) goes into a list: a count
+         * and up to five records of 0x30. Zeroed scratch, never an object. */
+        for (i = 0; i < 0x100; i += 4)
+            DEV_MEM32(pts + 0x50 + (uint32_t)i) = 0;
+        args[9] = pts + 0x50;
+        obj = dev_guest_call(A->ray, pts, args, 10);
+        for (i = 0; i < 3; i++)
+            hit[i] = DEV_MEMF(pts + 0x20 + 4u * (uint32_t)i);
+        if (!self || obj != self)
+            break;
+        for (i = 0; i < 3; i++)
+            start[i] = hit[i] + dir[i] * 0.1f;
+        room_out = DEV_MEM32(pts + 0x40);
+        if (room_out < 0x1000u)
+            room = (int)room_out;
+        obj = 0;
+    }
     if (!dev_ptr_ok(obj)) {
         snprintf(out, n, "aim: nothing within 1000");
         return;
@@ -1069,6 +1204,8 @@ static const struct { const char *label; int act, left, right; } k_dev_menu[] = 
     { "Save position",            ACT_SAVE,      -1, -1 },
     { "Back to saved position",   ACT_LOAD,      -1, -1 },
     { "Wireframe",                ACT_WIREFRAME, -1, -1 },
+    { "HUD",                      ACT_HUD,       -1, -1 },
+    { "Give item",                ACT_GIVE,      ACT_ITEM_PREV, ACT_ITEM_NEXT },
 };
 #define DEV_MENU_ROWS ((int)(sizeof k_dev_menu / sizeof k_dev_menu[0]))
 
@@ -1086,6 +1223,16 @@ static const char *dev_menu_value(int row, char *buf, size_t n)
     case ACT_FREECAM:   on = D.freecam; break;
     case ACT_NOCLIP:    on = D.noclip; break;
     case ACT_WIREFRAME: on = xbox_D3D8Wireframe(); break;
+    case ACT_HUD:       on = !D.hud_off; break;
+    case ACT_GIVE: {
+        char name[32];
+        uint32_t r = dev_record(dev_player());
+        int have = r && dev_in_level() && DEV_MEM32(r + TS2_R_OWNED + 4u * (uint32_t)D.item);
+
+        snprintf(buf, n, "< %s >%s", dev_item_name(D.item, name, sizeof name),
+                 have ? " (have)" : "");
+        return buf;
+    }
     case ACT_FASTER:
         snprintf(buf, n, "< %gx >", (double)k_dev_speeds[D.speed]);
         return buf;
@@ -1147,18 +1294,20 @@ static void dev_menu_input(uint32_t p)
         dev_action(ACT_MENU, p);
 }
 
-static size_t dev_menu_text(char *out, size_t n)
+static size_t dev_menu_text(char *out, size_t n, int footer)
 {
     size_t k;
     int i;
-    char buf[32];
+    char buf[64];
 
     k = (size_t)snprintf(out, n, "TS2 DEV MENU\n");
     for (i = 0; i < DEV_MENU_ROWS && k < n; i++)
         k += (size_t)snprintf(out + k, n - k, "%s %-24s %s\n", i == D.menu_row ? ">" : " ",
                               k_dev_menu[i].label, dev_menu_value(i, buf, sizeof buf));
-    if (k < n)
+    if (k < n && footer)
         k += (size_t)snprintf(out + k, n - k, "A/Enter set  left/right change  B/Esc close");
+    else if (k > 0 && k <= n && out[k - 1] == '\n')
+        out[--k] = 0;                   /* the message takes the footer's line */
     return k < n ? k : n - 1;
 }
 
@@ -1170,7 +1319,7 @@ static void dev_show(uint32_t p)
 
     line[0] = 0;
     if (D.menu) {
-        n = dev_menu_text(line, sizeof line);
+        n = dev_menu_text(line, sizeof line, D.msg_frames <= 0);
     } else if (D.readout && p && dev_in_level()) {
         uint32_t c = dev_chr(p);
         const float *at = D.freecam ? D.fc_eye : NULL;
@@ -1188,11 +1337,11 @@ static void dev_show(uint32_t p)
             dev_aim(line + n, sizeof line - n);
         n = strlen(line);
         if (n < sizeof line)
-            n += (size_t)snprintf(line + n, sizeof line - n, "%s%s%s%s%s%s",
+            n += (size_t)snprintf(line + n, sizeof line - n, "%s%s%s%s%s%s%s",
                                   D.god || D.noclip ? "\nGOD " : "\n",
                                   D.ammo ? "AMMO " : "", D.invisible ? "INVISIBLE " : "",
                                   D.noclip ? "NOCLIP " : "", D.freecam ? "FREECAM " : "",
-                                  D.frozen ? "STOPPED" : "");
+                                  D.hud_off ? "NOHUD " : "", D.frozen ? "STOPPED" : "");
     } else if (D.readout) {
         n = (size_t)snprintf(line, sizeof line, "level %u",
                              A->level_id ? (unsigned)DEV_MEM32(A->level_id) : 0u);

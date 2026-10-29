@@ -11,6 +11,10 @@ extern void sub_0001FDC0(void);
  * sub_0001FE80, which walks the rooms through their portals and tests each
  * with sub_00154DF0). Its own wrapper in overrides.inc is what is called. */
 extern void sub_00020160(void);
+/* give_item sub_000B5E90(R, item) and fill_ammo sub_000AFF50(R, item),
+ * below. */
+extern void sub_000B5E90(void);
+extern void sub_000AFF50(void);
 
 static const Ts2DevAddrs k_ts2_dev = {
     /* player_base: [0x00497028] is the local player records, 0xD3C each;
@@ -64,4 +68,21 @@ static const Ts2DevAddrs k_ts2_dev = {
      * 0x00080A4C, 0x0006B650; cmp eax,[esi+0x1300] at 0x000808A7; test at
      * 0x0006B7C3). These are those calls' return addresses (code). */
     { 0x00080761, 0x0008089E, 0x00080A49, 0x0006B64D, 0x0006B7BE },
+    /* give_item: sub_000B5E90(R, item) sets the owned flag R+0x984+item*4,
+     * lets sub_000B3010 decide the automatic switch (the player's setting;
+     * a switch writes R+0xC8), shows the item's name and plays the pickup
+     * sound. The weapon pickup sub_0013DD30 calls it after giving the
+     * weapon's two ammunition kinds with sub_000B04D0 (code). */
+    sub_000B5E90,
+    /* fill_ammo: sub_000AFF50(R, item) sets the item's ammunition pools to
+     * the maximum in the ammunition table 0x2C1678 (code). */
+    sub_000AFF50,
+    /* item_count, item_names, item_name_stride: the item table at 0x2C9BF0
+     * has 42 entries of 0x24; each item's text id is the word at
+     * 0x2CA1D0 + item * 0x48 (code; measured: 36 Temporal Uplink, 11
+     * Sniper Rifle). */
+    42, 0x002CA1D0, 0x48,
+    /* text_table, text_count: the English strings, a pointer per text id
+     * (the language table 0x00335EA8's English entry; 2770 ids; code). */
+    0x00335EC0, 2770,
 };

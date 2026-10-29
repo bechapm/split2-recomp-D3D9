@@ -20,4 +20,7 @@ static const Ts2DevAddrs k_ts2_dev = {
     0,                  /* room walk */
     0, 0,               /* ray, object list */
     { 0 },              /* sight rays */
+    0, 0,               /* give item, fill ammo */
+    0, 0, 0,            /* item names */
+    0, 0,               /* English text */
 };
