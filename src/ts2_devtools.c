@@ -688,7 +688,7 @@ void ts2_dev_sweep(void (*sweep)(void))
 }
 
 /* ray(room, start, delta, infinite, hit, normal, room_out, mask, first,
- * ignore) returns the object hit. An enemy decides it can see its target
+ * passed) returns the object hit. An enemy decides it can see its target
  * when its sight ray hits the target itself: under invisibility, those
  * rays (by their return addresses) hit nothing when they hit the player.
  * Bullets and everything else are left alone. */
@@ -966,10 +966,10 @@ static void dev_configure(void)
             D.start_tp_pending ? ", teleport at the first level" : "");
 }
 
-/* What the middle of the view is on: the game's own ray, from the eye (the
- * free camera's when it is on) 1000 units along the view, past the
- * player's own character. Writes a line, or nothing without a ray. */
-static void dev_aim(uint32_t p, char *out, size_t n)
+/* What the middle of the view is on: the game's own ray, from just ahead of
+ * the eye (the free camera's when it is on) 1000 units along the view.
+ * Writes a line, or nothing without a ray. */
+static void dev_aim(char *out, size_t n)
 {
     uint32_t ctx = dev_context(), pts, args[10], obj, cls, model, name;
     float eye[3], dir[3], hit[3], start[3];
@@ -992,12 +992,12 @@ static void dev_aim(uint32_t p, char *out, size_t n)
     }
     dev_normalize(dir);
     /* From just ahead of the eye: from the eye itself the ray hit the
-     * player's own character nearly every frame, ignore or not. */
+     * player's own character nearly every frame. */
     for (i = 0; i < 3; i++) {
         start[i] = eye[i] + dir[i] * 0.75f;
         dir[i] *= 1000.0f;
     }
-    pts = dev_scratch(0x50);
+    pts = dev_scratch(0x150);
     dev_put3(pts, start);
     dev_put3(pts + 0x10, dir);
     hit[0] = hit[1] = hit[2] = 0.0f;
@@ -1012,7 +1012,11 @@ static void dev_aim(uint32_t p, char *out, size_t n)
     args[6] = pts + 0x40;               /* room it ended in */
     args[7] = 0;                        /* every class */
     args[8] = 0;                        /* the nearest hit */
-    args[9] = dev_chr(p);               /* not the player */
+    /* What the ray passed through (a fence) goes into a list: a count and
+     * up to five records of 0x30. Zeroed scratch, never an object. */
+    for (i = 0; i < 0x100; i += 4)
+        DEV_MEM32(pts + 0x50 + (uint32_t)i) = 0;
+    args[9] = pts + 0x50;
     obj = dev_guest_call(A->ray, pts, args, 10);
     for (i = 0; i < 3; i++)
         hit[i] = DEV_MEMF(pts + 0x20 + 4u * (uint32_t)i);
@@ -1181,7 +1185,7 @@ static void dev_show(uint32_t p)
                              at ? D.fc_room : (int)DEV_MEM32(p + TS2_P_ROOM),
                              c ? DEV_MEMF(c + TS2_C_HEALTH) : 0.0f);
         if (n < sizeof line)
-            dev_aim(p, line + n, sizeof line - n);
+            dev_aim(line + n, sizeof line - n);
         n = strlen(line);
         if (n < sizeof line)
             n += (size_t)snprintf(line + n, sizeof line - n, "%s%s%s%s%s%s",

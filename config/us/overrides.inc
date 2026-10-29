@@ -59,7 +59,7 @@ extern void sub_001ADF80_gen(void);
 void sub_001ADF80(void) { ts2_dev_clock(sub_001ADF80_gen); }
 
 /* ray is sub_00020160(room, start, delta, infinite, hit, normal, room_out,
- * class_mask, first_hit, ignore): the game's line-of-sight and bullet test,
+ * class_mask, first_hit, passed): the game's line-of-sight and bullet test,
  * returning the object hit. Wrapped for the debugging tools' invisibility,
  * which makes the enemies' sight rays miss the player (the call sites are
  * in config/us/devtools.inc). */

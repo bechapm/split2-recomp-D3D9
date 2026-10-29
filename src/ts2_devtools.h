@@ -31,9 +31,10 @@ typedef struct Ts2DevAddrs {
      * holds `to`, found by walking the portals from `from` in from_room. */
     void (*room_walk)(void);
     /* ray(room, float *start, float *delta, infinite, float *hit, float
-     * *normal, int *room_out, class_mask, first_hit, ignore): the object hit
+     * *normal, int *room_out, class_mask, first_hit, passed): the object hit
      * along start..start+delta (0 for none), the point, the surface normal
-     * and the room it ended in. */
+     * and the room it ended in; `passed` is filled with what the ray went
+     * through on the way (a count, then up to five records of 0x30). */
     void (*ray)(void);
     uint32_t object_list;     /* the model list: 0x24 bytes each, a name pointer first */
     /* The return addresses of the enemies' "can I see my target" rays: the
