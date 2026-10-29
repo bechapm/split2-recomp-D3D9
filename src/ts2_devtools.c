@@ -908,7 +908,15 @@ static int dev_model_present(uint32_t m)
         return 1;
     if (A->resident_find && dev_guest_call(A->resident_find, dev_scratch(0), &path, 1))
         return 1;
-    return A->pak_find && dev_guest_call(A->pak_find, dev_scratch(0), &path, 1);
+    {
+        uint32_t current = A->pak_current ? DEV_MEM32(A->pak_current) : 0;
+        int found = (A->pak_find_p4 && dev_guest_call(A->pak_find_p4, dev_scratch(0), &path, 1)) ||
+                    (A->pak_find_p8 && dev_guest_call(A->pak_find_p8, dev_scratch(0), &path, 1));
+
+        if (A->pak_current)
+            DEV_MEM32(A->pak_current) = current;    /* the game's last lookup */
+        return found;
+    }
 }
 
 /* Whether the level can give the item: each of its weapons' models, first-

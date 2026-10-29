@@ -59,15 +59,19 @@ typedef struct Ts2DevAddrs {
      * type first, -1 for none), the weapon definitions (the first-person
      * and the third-person model first), each model's loaded data in the
      * model list (object_list's entries, at this address), and the two
-     * lookups the game makes before it falls back to a loose file on the
-     * disc: the resident resources and the level's pak, each (path), cdecl,
-     * 0 for absent. A model in none of them is not on the disc at all, and
-     * giving its item crashed. */
+     * lookups that decide whether the game finds it at all: the resident
+     * resources, and the mounted paks' P4CK and P8CK directories (a mod's
+     * files among them), each (path), cdecl, 0 for absent; the directory
+     * lookups leave the record they found it in at pak_current, which is
+     * kept. A model in none of them is not on the disc at all, and giving
+     * its item crashed. */
     uint32_t item_table, item_stride;
     uint32_t weapon_defs, weapon_def_stride, weapon_type_count;
     uint32_t model_loaded;
     void (*resident_find)(void);
-    void (*pak_find)(void);
+    void (*pak_find_p4)(void);
+    void (*pak_find_p8)(void);
+    uint32_t pak_current;
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the

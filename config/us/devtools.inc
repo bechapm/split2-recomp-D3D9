@@ -17,9 +17,11 @@ extern void sub_000B5E90(void);
 extern void sub_000AFF50(void);
 /* room_at sub_0011FF10, below. */
 extern void sub_0011FF10(void);
-/* resident_find sub_001495C0 and pak_find sub_00086360, below. */
+/* resident_find sub_001495C0 and the pak lookups sub_000862A0 (P4CK) and
+ * sub_00086040 (P8CK), below; the lookups are k_ts2_paks's too. */
 extern void sub_001495C0(void);
-extern void sub_00086360(void);
+extern void sub_000862A0(void);
+extern void sub_00086040(void);
 
 static const Ts2DevAddrs k_ts2_dev = {
     /* player_base: [0x00497028] is the local player records, 0xD3C each;
@@ -116,11 +118,16 @@ static const Ts2DevAddrs k_ts2_dev = {
      * path at +0xC is object_list above); +4 is the loaded model, 0 until
      * first use and cleared at each level start (sub_00151CC0). The loader
      * sub_0014BA20 fills it with sub_0012C820(path), which tries the
-     * resident table (sub_001495C0), then the mounted pak (sub_00086360),
-     * then the loose file on the disc (sub_00086970), where a gun the level
-     * does not carry crashed (code; measured with the Rocket Launcher in
-     * Siberia). */
+     * resident table (sub_001495C0), then a pak read into memory
+     * (sub_00086360, which answers only for those), then a read by name
+     * through the mounted paks (sub_00086970), which goes to the disc as a
+     * loose file when no pak has the name: where a gun the level does not
+     * carry crashed (code; measured with the Rocket Launcher in Siberia).
+     * So "can it be found" is the resident table or the mounted paks'
+     * directories, which a mod's files are added to: the P4CK and P8CK
+     * lookups sub_000862A0 and sub_00086040, which leave the record at
+     * 0x3585F0 (k_ts2_paks, overrides.inc; code). */
     0x002D89C4,
     sub_001495C0,
-    sub_00086360,
+    sub_000862A0, sub_00086040, 0x003585F0,
 };

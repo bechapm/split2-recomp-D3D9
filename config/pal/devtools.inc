@@ -25,5 +25,5 @@ static const Ts2DevAddrs k_ts2_dev = {
     0, 0,               /* English text */
     0, 0,               /* room by position, player count */
     0, 0, 0, 0, 0, 0,   /* items' models */
-    0, 0,               /* their lookups */
+    0, 0, 0, 0,         /* their lookups */
 };
