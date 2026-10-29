@@ -30,6 +30,11 @@
  *
  * The keys themselves are config/input_defaults.json, the title's own layout
  * (recomp_title_input in CMakeLists.txt).
+ *
+ * A scripted run's window has no mouse, so RECOMP_TS2_MOUSE_SEQ moves it:
+ * "FRAME:DX:DY,..." adds DX, DY counts at those presents (counted from the
+ * first), as the window would; it needs mouse look on (RECOMP_MOUSE_LOOK=1).
+ * RECOMP_TS2_MOUSE_LOG=1 prints what look did with it.
  */
 #include <math.h>
 #include <stddef.h>
@@ -74,6 +79,7 @@ static struct {
     int      started;
     int      log;
     unsigned logged;
+    const char *seq;        /* RECOMP_TS2_MOUSE_SEQ, what is left of it */
 } M;
 
 static int m_ptr_ok(uint32_t a)
@@ -129,14 +135,35 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
     }
 }
 
+/* RECOMP_TS2_MOUSE_SEQ: the steps due by this frame. */
+static void m_seq(void)
+{
+    while (M.seq && *M.seq) {
+        char *end;
+        unsigned long at = strtoul(M.seq, &end, 10);
+        float dx, dy;
+
+        if (end == M.seq || *end != ':' || at > M.frame)
+            return;
+        dx = strtof(end + 1, &end);
+        dy = *end == ':' ? strtof(end + 1, &end) : 0.0f;
+        recomp_mouse_move(dx, dy);
+        while (*end && *end != ',')
+            end++;
+        M.seq = *end ? end + 1 : NULL;
+    }
+}
+
 void ts2_mouse_frame(void)
 {
     M.frame++;
+    m_seq();
     if (M.started)
         return;
     M.started = 1;
     recomp_bindings_set_filter(m_filter);
     M.log = recomp_config_bool("RECOMP_TS2_MOUSE_LOG", NULL, 0);
+    M.seq = getenv("RECOMP_TS2_MOUSE_SEQ");
     if (A->player_base) {
         recomp_mouse_set_direct(1);
         fprintf(stderr, "[TS2-MOUSE] the mouse turns the player directly%s\n",
