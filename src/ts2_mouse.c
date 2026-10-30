@@ -90,8 +90,6 @@ extern ptrdiff_t g_xbox_mem_offset;
 /* The field of view the turn rate is measured against: look multiplies by
  * fov / 60, and so does the mouse. */
 #define TS2_MOUSE_FOV       60.0f
-/* Narrower than this, the camera is looking through a scope. */
-#define TS2_ZOOMED_FOV      55.0f
 
 static struct {
     unsigned frame;         /* presents seen */
@@ -104,7 +102,6 @@ static struct {
     int      invert;        /* ts2_mouse_invert */
     int      steady;        /* ts2_steady_aim */
     uint32_t still;         /* the record whose sway is held at 0 (aiming) */
-    volatile int scoped;    /* this aim went through a scope: the wheel zooms */
 } M;
 
 void ts2_mouse_hold(int on)
@@ -153,19 +150,15 @@ static int m_camera_is_eye(uint32_t p)
 
 /* ── the bindings filter ─────────────────────────────────────── */
 
-/* The camera is zoomed in: aim mode with a scope (60 to 17 measured in
- * Siberia; aim mode without one leaves the field of view at 60). Once it
- * has been, the wheel zooms until aiming ends, in case a scope's widest
- * setting is wider than this. */
-static int m_zoomed(void)
+/* Player 1 is looking through a scope: the flags gain bit 2 (0x8 to 0xE
+ * aiming the sniper rifle; 0xA aiming with no scope), the bit that also
+ * stops the breathing sway in the game's own breathing function. The field
+ * of view cannot tell: the game narrows it for some guns with no scope
+ * too (the S47 and laser gun to 40, the SBP90 to 30, measured in the PC
+ * release), and a scope's widest step is 30 as well. */
+static int m_scoped(uint32_t p)
 {
-    uint32_t ctx = A->context ? M_MEM32(A->context) : 0;
-    float fov;
-
-    if (!m_ptr_ok(ctx))
-        return 0;
-    fov = M_MEMF(ctx + A->context_fov);
-    return fov > 1.0f && fov < TS2_ZOOMED_FOV;
+    return M_MEM32(p + TS2_PM_AIMING) && (M_MEM32(p + TS2_PM_FLAGS) & TS2_PF_SCOPE);
 }
 
 static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
@@ -188,11 +181,7 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
      * crosshair at all (the temporal uplink), zooms nothing, and the wheel
      * would stop changing weapon with nothing on screen to say why. */
     p = m_player1();
-    if (!p || !M_MEM32(p + TS2_PM_AIMING))
-        M.scoped = 0;
-    else if (m_zoomed())
-        M.scoped = 1;           /* and stays, if zooming out widens it past */
-    if (M.scoped) {
+    if (p && m_scoped(p)) {
         if (kbm->wButtons & XBOX_GAMEPAD_DPAD_LEFT) {
             pad->wButtons &= (WORD)~XBOX_GAMEPAD_DPAD_LEFT;
             pad->wButtons |= XBOX_GAMEPAD_DPAD_UP;

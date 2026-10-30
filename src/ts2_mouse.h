@@ -28,13 +28,18 @@ enum {
     TS2_PM_EYE      = 0x0FC,  /* the eye, made from the position after each move */
     TS2_PM_YAW      = 0x148,  /* degrees, 0..360; turning right lowers it */
     TS2_PM_PITCH    = 0x14C,  /* degrees; up is positive (measured: -40 shows the floor) */
-    TS2_PM_FLAGS    = 0x00C,  /* bit 3: turns by look; others slow it */
+    TS2_PM_FLAGS    = 0x00C,  /* bit 3: turns by look; bit 2: a scope's view; others slow it */
     TS2_PM_SWAY_YAW   = 0x188, /* breathing: degrees the camera adds to the yaw */
     TS2_PM_SWAY_PITCH = 0x18C, /* and to the pitch */
     TS2_PM_MODE     = 0x158,  /* 6, 8 (a mounted gun) and 9: look does not turn P */
     TS2_PM_AIMING   = 0x884,  /* non-zero in aim mode */
     TS2_PM_HELD     = 0x998,  /* non-zero: look does nothing at all */
     TS2_CTX_EYE     = 0x27C,  /* the camera context: the eye the camera was made from */
+};
+
+/* TS2_PM_FLAGS bits. */
+enum {
+    TS2_PF_SCOPE    = 0x004,  /* looking through a scope (no breathing sway) */
 };
 
 /* While held (the debugging tools' menu or free camera is up and the game
