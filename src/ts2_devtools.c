@@ -179,7 +179,6 @@ static struct {
     int  frozen, step, freecam, noclip, invisible;
     int  hud_off;                       /* the game's HUD not drawn */
     int  item;                          /* what "Give item" gives */
-    int  named_frames;                  /* frames left to load asked-for HUD textures */
     int  god_hold;                      /* frames god stays on after noclip */
     int  speed;                         /* index in k_dev_speeds */
     float speed_carry;                  /* the fraction of a tick not yet run */
@@ -1073,36 +1072,76 @@ static uint32_t dev_record(uint32_t p)
     return dev_ptr_ok(r) ? r : 0;
 }
 
-/* The HUD textures a given gun asked for, which only a level load would
- * load (a gun the level carries has them already): loaded now, as the
- * level-load pass loads them. */
-static void dev_load_named(void)
+/* One HUD texture, by its index in the named table: loaded now, as a level
+ * load would have, when the level never asked for it. */
+static void dev_load_named(uint32_t i)
 {
-    uint32_t i, e, name, rec, args[3];
+    uint32_t e, name, rec, args[3];
     int32_t h;
 
-    if (!A->named_textures || !A->named_record || !A->named_load || !dev_in_level())
+    if (i >= A->named_count)
         return;
-    for (i = 0; i < A->named_count; i++) {
-        e = A->named_textures + i * 0x10u;
-        if ((int32_t)DEV_MEM32(e + 0xC) != -1)
-            continue;
-        name = DEV_MEM32(e + 8);
-        if (!dev_ptr_ok(name))
-            continue;
+    e = A->named_textures + i * 0x10u;
+    if ((int32_t)DEV_MEM32(e + 0xC) >= 0)
+        return;                         /* loaded */
+    name = DEV_MEM32(e + 8);
+    if (!dev_ptr_ok(name))
+        return;
+    rec = dev_guest_call(A->named_record, dev_scratch(0), &name, 1);
+    if (!dev_ptr_ok(rec)) {
+        /* No record: ask for it as the level start does, which adds one. */
+        DEV_MEM32(e + 0xC) = (uint32_t)-2;
+        args[0] = i;
+        dev_guest_call(A->named_request, dev_scratch(0), args, 1);
         rec = dev_guest_call(A->named_record, dev_scratch(0), &name, 1);
-        if (!dev_ptr_ok(rec))
-            continue;
-        h = (int32_t)DEV_MEM32(rec + 0x14);
-        if (h < 0) {
-            args[0] = name;
-            args[1] = DEV_MEM32(rec + 0x10);
-            args[2] = rec + 0x14;
-            dev_guest_call(A->named_load, dev_scratch(0), args, 3);
-            h = (int32_t)DEV_MEM32(rec + 0x14);
+        if (!dev_ptr_ok(rec)) {
+            DEV_MEM32(e + 0xC) = (uint32_t)-1;
+            return;
         }
-        if (h >= 0)
-            DEV_MEM32(e + 0xC) = (uint32_t)h;
+    }
+    h = (int32_t)DEV_MEM32(rec + 0x14);
+    if (h < 0) {
+        args[0] = name;
+        args[1] = DEV_MEM32(rec + 0x10);
+        args[2] = rec + 0x14;
+        dev_guest_call(A->named_load, dev_scratch(0), args, 3);
+        h = (int32_t)DEV_MEM32(rec + 0x14);
+    }
+    DEV_MEM32(e + 0xC) = h >= 0 ? (uint32_t)h : (uint32_t)-1;
+}
+
+/* The HUD textures of an item's guns: their ammunition types' entries, as
+ * the game's own weapon set-up names them. A gun the level carries has
+ * them; one given from another level's data drew a white rectangle. */
+static void dev_load_item_hud(int item)
+{
+    uint32_t d, a, base, e;
+    int32_t type, t;
+    int side, ammo, k;
+
+    if (!A->named_textures || !A->named_record || !A->named_load || !A->named_request ||
+        !A->ammo_hud || !A->item_table || !A->weapon_defs)
+        return;
+    for (side = 0; side < 2; side++) {
+        type = (int32_t)DEV_MEM32(A->item_table + (uint32_t)item * A->item_stride + 4u * (uint32_t)side);
+        if (type < 0 || (uint32_t)type >= A->weapon_type_count)
+            continue;
+        d = A->weapon_defs + (uint32_t)type * A->weapon_def_stride;
+        for (ammo = 0; ammo < 2; ammo++) {
+            t = (int32_t)DEV_MEM32(d + 0x10u + 8u * (uint32_t)ammo);
+            if (t <= 0 || (uint32_t)t >= A->ammo_count)
+                continue;
+            base = A->ammo_hud + (uint32_t)t * A->ammo_stride;
+            dev_load_named(DEV_MEM32(base));
+            for (k = 0; k < 4; k++) {
+                e = base + 4u + 0x20u * (uint32_t)k;
+                if (!DEV_MEM32(e))
+                    break;
+                for (a = 4; a <= 8; a += 4)
+                    if ((int32_t)DEV_MEM32(e + a) >= 0)
+                        dev_load_named(DEV_MEM32(e + a));
+            }
+        }
     }
 }
 
@@ -1132,8 +1171,7 @@ static void dev_give(uint32_t p)
     if (A->fill_ammo)
         dev_guest_call(A->fill_ammo, dev_scratch(0), args, 2);
     DEV_MEM32(r + TS2_R_ITEM) = (uint32_t)D.item;
-    D.named_frames = 30;                /* its HUD textures, asked for now or as it is drawn */
-    dev_load_named();
+    dev_load_item_hud(D.item);
     dev_say("gave %s (%d)", name, D.item);
 }
 
@@ -1715,10 +1753,6 @@ void ts2_dev_frame(void)
         dev_freecam_step();
     if (D.noclip && p && !D.menu)
         dev_noclip_step(p);
-    if (D.named_frames > 0) {
-        D.named_frames--;
-        dev_load_named();
-    }
     dev_withhold();
     dev_show(p);
 }

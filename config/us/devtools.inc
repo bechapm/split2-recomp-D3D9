@@ -30,6 +30,7 @@ extern void sub_001B7F70(void);
 /* named_record and named_load, below. */
 extern void sub_00149790(void);
 extern void sub_001B7D80(void);
+extern void sub_000A9BA0(void);
 
 static const Ts2DevAddrs k_ts2_dev = {
     /* player_base: [0x00497028] is the local player records, 0xD3C each;
@@ -152,15 +153,25 @@ static const Ts2DevAddrs k_ts2_dev = {
      * texture's slot over the id (code; measured). */
     sub_00086360, sub_00129460, sub_001B7E60, sub_001B7F70, 0x0C,
     /* named_textures, named_count: 0x2BF390 + i * 0x10, 548 entries, name
-     * at +8 ("host0:textures/misc/<x>.raw"), handle at +0xC. sub_000A9AA0(i)
-     * gives the HUD the handle; sub_000A9BA0(i) asks for it (handle -1, and
-     * a resident record queued by sub_00149FA0); a weapon's are asked for
-     * by sub_000B0010 (its ammunition types' entries at 0x2C167C/0x2C1680 +
-     * type * 0xD0, and the 0x80 group). The level-load pass sub_00149810
-     * loads each record with sub_001B7D80(name, [rec+0x10], rec+0x14), and
-     * sub_000A9D10 copies sub_00149790(name)->+0x14 into the table;
-     * sub_000A9C20 resets the table at each level start (code; measured:
-     * hudtanklaser 78, ammo_laser 43 and others stayed -1 after a give). */
+     * at +8 ("host0:textures/misc/<x>.raw"), handle at +0xC. sub_000A9C20
+     * sets every handle to -2 at level start and asks for the level's set;
+     * sub_000A9BA0(i) asks for one (only on -2: handle -1, its parameters
+     * at 0x35FF20, a resident record added by sub_00149FA0); the level-load
+     * pass sub_00149810 loads each record with sub_001B7D80(name,
+     * [rec+0x10], rec+0x14), and sub_000A9D10 then writes sub_00149790
+     * (name)->+0x14, or -1 with no record, into every handle. sub_000A9AA0(i)
+     * gives the HUD the handle. (code; measured: in Siberia ammo_laser 43,
+     * hudtanklaser 78 and the rest of the Lasergun's, Minigun's, Plasma
+     * Autorifle's and Homing Launcher's are -1 with no record, 378 of the
+     * 548 in all; the resident table has room for 700 records, 353 used.) */
     0x002BF390, 548,
-    sub_00149790, sub_001B7D80,
+    sub_00149790, sub_001B7D80, sub_000A9BA0,
+    /* ammo_hud, ammo_stride, ammo_count: a weapon's are asked for by
+     * sub_000B0010(type), for its ammunition types (def +0x10, +0x18):
+     * [0x2C167C + t * 0xD0], then +4 and +8 (when not -1) of up to four
+     * 0x20-byte entries from 0x2C1680 + t * 0xD0 (until +0 is 0) (code;
+     * measured: minigun ammunition 3 -> 38, 67, 68; laser 10 -> 43, 76, 78;
+     * plasma 11 -> 45, 67, 68; homing 14 -> 47; rockets 13 -> 46, 75). The
+     * count is only a bound on what is read. */
+    0x002C167C, 0xD0, 32,
 };

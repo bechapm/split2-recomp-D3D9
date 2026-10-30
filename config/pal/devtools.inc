@@ -27,5 +27,6 @@ static const Ts2DevAddrs k_ts2_dev = {
     0, 0, 0, 0, 0, 0,   /* items' models */
     0, 0, 0, 0,         /* their lookups */
     0, 0, 0, 0, 0,      /* binding a model's textures */
-    0, 0, 0, 0,         /* the HUD's named textures */
+    0, 0, 0, 0, 0,      /* the HUD's named textures */
+    0, 0, 0,            /* and a gun's among them */
 };

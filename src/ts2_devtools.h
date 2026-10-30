@@ -86,15 +86,21 @@ typedef struct Ts2DevAddrs {
     void (*texture_load_alt)(void);
     uint32_t model_materials; /* a loaded model: its material list */
     /* The named textures (the HUD's: crosshairs, ammunition icons), a table
-     * of 0x10-byte entries, name at +8 and handle at +0xC (-2 not asked
-     * for, -1 asked for, else loaded). Giving a gun asks for its own; only
-     * a level load loads them, and one not loaded drew as a white
-     * rectangle over the view. Loaded as the level-load pass does:
-     * rec = named_record(name), cdecl; named_load(name, [rec+0x10],
-     * rec+0x14); the handle is then [rec+0x14]. */
+     * of 0x10-byte entries, name at +8 and handle at +0xC (after a level
+     * load: -1 if the level never asked for it, else loaded). A gun's are
+     * its ammunition types' (a weapon definition's +0x10 and +0x18): in the
+     * ammunition table (ammo_hud + type * ammo_stride) the first dword is one
+     * index, then up to four 0x20-byte entries (until +0 is 0) give two more
+     * each at +4 and +8 (-1 none). One the level never asked for drew as a
+     * white rectangle over the view. Loaded as a level load does:
+     * named_request(i), cdecl, on a handle set to -2, adds its record;
+     * rec = named_record(name); named_load(name, [rec+0x10], rec+0x14);
+     * the handle is then [rec+0x14]. */
     uint32_t named_textures, named_count;
     void (*named_record)(void);
     void (*named_load)(void);
+    void (*named_request)(void);
+    uint32_t ammo_hud, ammo_stride, ammo_count;
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the
