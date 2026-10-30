@@ -179,4 +179,8 @@ void ts2_dev_model_load(void (*load)(void));
  * not. Inside the model loader, the buffer is the model's data. */
 void ts2_dev_file_read(void (*read)(void));
 
+/* Whether every gun goes into every level from the game's own data
+ * (src/recomp_manual.c): the tools are on and this release can give one. */
+int ts2_dev_gives_guns(void);
+
 #endif

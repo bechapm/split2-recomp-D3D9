@@ -6,7 +6,7 @@
  * world holds still and is still drawn), a readout of where the player is,
  * a saved position to come back to, a free camera, noclip, the game's
  * speed and a wireframe view, all from a menu on the overlay. All of it is
- * TS2's: the toolkit only gives keys, lines on its overlay
+ * TS2's: the toolkit only gives the keyboard, lines on its overlay
  * (xbox_D3D8KeyDown, xbox_D3D8Notice), the pad (xbox_InputWithhold,
  * xbox_InputRead) and the wireframe (xbox_D3D8SetWireframe).
  *
@@ -18,7 +18,7 @@
  * Every tool starts off. The switches (each a setting in the title's .conf
  * or an environment variable, read once at start-up):
  *
- *   ts2_dev = 0            RECOMP_TS2_DEV          no menu and no keys (on by default)
+ *   ts2_dev = 0            RECOMP_TS2_DEV          no menu (on by default)
  *   ts2_god = 1            RECOMP_TS2_GOD          god mode from the start
  *   ts2_infinite_ammo = 1  RECOMP_TS2_INFINITE_AMMO
  *   ts2_unlock_all = 1     RECOMP_TS2_UNLOCK_ALL   every character, level and cheat
@@ -30,7 +30,7 @@
  *                          tools are on
  *   ts2_speed = 0.5        RECOMP_TS2_SPEED        the game's speed: 0.25 0.5 1 2 4
  *   ts2_dev_seq = <frame>:<action>,...  RECOMP_TS2_DEV_SEQ
- *                          the keys' actions at given frames (from the first
+ *                          the menu's actions at given frames (from the first
  *                          present), for scripted runs: readout god ammo
  *                          unlock save load freecam noclip freeze step
  *                          invisible wireframe faster slower menu hud give
@@ -41,17 +41,8 @@
  *                          where the player is put once the first level is
  *                          playing: a repeatable spot for a scripted run
  *
- * Shortcut keys for the menu's items (only while the game's window is in
- * front):
- *
- *   F1  the menu           F2  god mode        F3  infinite ammo
- *   F4  invisible to enemies                   Home  unlock everything
- *   F5  save position      F6  back to the saved position
- *   F7  free camera        F8  noclip          F12 or Pause: stop the clock
- *   Page Down: one frame forward while the clock is stopped
- *   End  wireframe (the toolkit's, RECOMP_WIREFRAME)
- *   Insert  the game's HUD on and off
- *   - and +  slower and faster
+ * F1 is the only key of its own (while the game's window is in front):
+ * every tool is a row of the menu.
  *
  * Saved positions are kept per level in ts2_positions.txt beside the
  * executable (RECOMP_TS2_POSITIONS names another file), one line each:
@@ -150,11 +141,8 @@ extern int         xbox_InputRead(unsigned port, uint16_t *buttons, uint8_t anal
 
 /* Windows virtual-key codes (the toolkit translates them off Windows). */
 enum {
-    VK_F1_ = 0x70, VK_F2_, VK_F3_, VK_F4_, VK_F5_, VK_F6_, VK_F7_, VK_F8_,
-    VK_F12_ = 0x7B, VK_PAUSE_ = 0x13, VK_NEXT_ = 0x22, VK_SHIFT_ = 0x10,
-    VK_SPACE_ = 0x20, VK_CONTROL_ = 0x11, VK_HOME_ = 0x24, VK_END_ = 0x23,
-    VK_RETURN_ = 0x0D, VK_ESCAPE_ = 0x1B, VK_MINUS_ = 0xBD, VK_PLUS_ = 0xBB,
-    VK_SUBTRACT_ = 0x6D, VK_ADD_ = 0x6B, VK_INSERT_ = 0x2D,
+    VK_F1_ = 0x70, VK_SHIFT_ = 0x10, VK_SPACE_ = 0x20, VK_CONTROL_ = 0x11,
+    VK_RETURN_ = 0x0D, VK_ESCAPE_ = 0x1B,
     VK_LEFT_ = 0x25, VK_UP_, VK_RIGHT_, VK_DOWN_,
 };
 
@@ -1183,7 +1171,7 @@ static void dev_give(uint32_t p)
 
 /* ── once a frame ──────────────────────────────────────────── */
 
-/* What a key (or a step of ts2_dev_seq) does. */
+/* What a row of the menu (or a step of ts2_dev_seq) does. */
 enum {
     ACT_READOUT, ACT_GOD, ACT_AMMO, ACT_UNLOCK, ACT_SAVE, ACT_LOAD,
     ACT_FREECAM, ACT_NOCLIP, ACT_FREEZE, ACT_STEP, ACT_INVISIBLE, ACT_WIREFRAME,
@@ -1273,7 +1261,7 @@ static void dev_action(int act, uint32_t p)
             dev_say("stop the clock: not found in this release");
         } else {
             dev_freeze(!D.frozen);
-            dev_say(D.frozen ? "clock STOPPED (Page Down: one frame)" : "clock running");
+            dev_say(D.frozen ? "clock STOPPED" : "clock running");
         }
         break;
     case ACT_STEP:
@@ -1323,25 +1311,7 @@ static void dev_action(int act, uint32_t p)
     }
 }
 
-static void dev_keys(uint32_t p)
-{
-    static const struct { int vk, act; } keys[] = {
-        { VK_F1_, ACT_MENU },    { VK_F2_, ACT_GOD },     { VK_F3_, ACT_AMMO },
-        { VK_F4_, ACT_INVISIBLE }, { VK_HOME_, ACT_UNLOCK },
-        { VK_F5_, ACT_SAVE },    { VK_F6_, ACT_LOAD },
-        { VK_F7_, ACT_FREECAM }, { VK_F8_, ACT_NOCLIP },  { VK_F12_, ACT_FREEZE },
-        { VK_PAUSE_, ACT_FREEZE }, { VK_NEXT_, ACT_STEP }, { VK_END_, ACT_WIREFRAME },
-        { VK_MINUS_, ACT_SLOWER }, { VK_SUBTRACT_, ACT_SLOWER },
-        { VK_PLUS_, ACT_FASTER },  { VK_ADD_, ACT_FASTER }, { VK_INSERT_, ACT_HUD },
-    };
-    size_t i;
-
-    for (i = 0; i < sizeof keys / sizeof keys[0]; i++)
-        if (dev_pressed(keys[i].vk))
-            dev_action(keys[i].act, p);
-}
-
-/* ts2_dev_seq = "<frame>:<action>,...": the keys' actions at given frames,
+/* ts2_dev_seq = "<frame>:<action>,...": the menu's actions at given frames,
  * counted from the first present, for scripted runs (which cannot press a
  * key: their window is never in front). */
 static struct { unsigned long frame; int act; } g_dev_seq[64];
@@ -1414,7 +1384,7 @@ static void dev_configure(void)
     v = recomp_config_lookup("RECOMP_TS2_TELEPORT", "ts2_teleport");
     if (v && *v)
         D.start_tp_pending = dev_parse_spot(v, D.start_tp, &D.start_tp_angles);
-    fprintf(stderr, "[TS2-DEV] menu and keys %s (F1 or L3+R3: the menu), god %d, "
+    fprintf(stderr, "[TS2-DEV] menu %s (F1 or L3+R3), god %d, "
             "infinite ammo %d, unlock all %d, invisible %d, readout %d, HUD %d, speed %gx%s "
             "(src/ts2_devtools.c, docs/devtools.md)\n",
             D.keys ? "on" : "off (ts2_dev = 0)", D.god, D.ammo, D.unlock, D.invisible,
@@ -1640,7 +1610,7 @@ static size_t dev_menu_text(char *out, size_t n, int footer)
     return k < n ? k : n - 1;
 }
 
-/* The overlay's line: the readout, then the last thing a key did. */
+/* The overlay's line: the readout, then the last thing a tool said. */
 static void dev_show(uint32_t p)
 {
     char line[1200];
@@ -1718,6 +1688,15 @@ static void dev_withhold(void)
     }
 }
 
+/* Asked as the first pak is mounted, which can come before the first
+ * present. */
+int ts2_dev_gives_guns(void)
+{
+    if (!D.configured)
+        dev_configure();
+    return D.keys && A->give_item != NULL;
+}
+
 void ts2_dev_frame(void)
 {
     uint32_t p;
@@ -1737,7 +1716,8 @@ void ts2_dev_frame(void)
         if (thumbs && !thumbs_were)
             dev_action(ACT_MENU, p);
         thumbs_were = thumbs;
-        dev_keys(p);
+        if (dev_pressed(VK_F1_))
+            dev_action(ACT_MENU, p);
         if (D.menu)
             dev_menu_input(p);
     }
