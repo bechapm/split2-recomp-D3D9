@@ -1078,6 +1078,7 @@ static void dev_load_named(uint32_t i)
 {
     uint32_t e, name, rec, args[3];
     int32_t h;
+    int added = 0;
 
     if (i >= A->named_count)
         return;
@@ -1098,9 +1099,13 @@ static void dev_load_named(uint32_t i)
             DEV_MEM32(e + 0xC) = (uint32_t)-1;
             return;
         }
+        /* A new record's handle is 0 (the table is zero-filled), which is a
+         * slot: it is loaded whatever it says. */
+        DEV_MEM32(rec + 0x14) = (uint32_t)-1;
+        added = 1;
     }
     h = (int32_t)DEV_MEM32(rec + 0x14);
-    if (h < 0) {
+    if (h < 0 || added) {
         args[0] = name;
         args[1] = DEV_MEM32(rec + 0x10);
         args[2] = rec + 0x14;
