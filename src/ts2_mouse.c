@@ -363,16 +363,16 @@ void ts2_mouse_look(void (*look)(void))
 /* ── changing weapon ─────────────────────────────────────────── */
 
 /* Aim mode is a toggle by default and the game carries it over a weapon
- * change: aiming (+0x884) is worked out each tick as flags bit 1 (the aim
- * toggle, or the button held with the hold setting) outside modes 4, 7 and
- * 14, so it reads 0 while the weapon changes and comes back on the new one
- * -- the sniper rifle came up looking down its scope. Pressing aim mode's
- * button after the change landed too late (two frames of scope, then the
- * zoom out); before it, during the change, it is unclear what a press does.
- * So once the change asked for has started (flags 0x10), the toggle bit
- * itself is cleared, and the new weapon comes up at the hip. With the hold
- * setting the game sets it again from the button still held. Given up if no
- * change starts in half a second (nothing else to change to). */
+ * change: aiming (+0x884) is worked out each tick as flags bit 1, and when
+ * a change starts with it set (the held weapon +0xC8 is not the one wanted,
+ * +0xCC), the aim update (0x00140B98) moves it to bit 4 and puts it back
+ * once the change is over (0x00140BF1) -- the sniper rifle came up looking
+ * down its scope. Pressing aim mode's button after the change landed too
+ * late (two frames of scope, then the zoom out, measured). So once the
+ * change asked for has started, bit 4, the aim kept for after it, is
+ * cleared, and the new weapon comes up at the hip; with the hold setting
+ * the game's own update aims again from the button still held. Given up
+ * if no change starts in half a second (nothing else to change to). */
 static void m_unaim_tick(uint32_t p)
 {
     uint32_t flags;
@@ -380,8 +380,8 @@ static void m_unaim_tick(uint32_t p)
     if (!M.unaim || p != m_player1())
         return;
     flags = M_MEM32(p + TS2_PM_FLAGS);
-    if (flags & TS2_PF_CHANGING) {
-        M_MEM32(p + TS2_PM_FLAGS) = flags & ~(uint32_t)TS2_PF_AIM;
+    if (flags & TS2_PF_AIM_KEPT) {
+        M_MEM32(p + TS2_PM_FLAGS) = flags & ~(uint32_t)TS2_PF_AIM_KEPT;
         M.unaim = 0;
     } else if (M.frame - M.unaim > 30u) {
         M.unaim = 0;

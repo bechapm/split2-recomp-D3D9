@@ -41,7 +41,7 @@ enum {
 enum {
     TS2_PF_AIM      = 0x002,  /* aim mode: the toggle, or the button held (0x8 to 0xA) */
     TS2_PF_SCOPE    = 0x004,  /* looking through a scope (no breathing sway) */
-    TS2_PF_CHANGING = 0x010,  /* changing weapon (0x18 measured; aiming reads 0 meanwhile) */
+    TS2_PF_AIM_KEPT = 0x010,  /* aim mode kept while the weapon changes, put back after (0x18) */
 };
 
 /* While held (the debugging tools' menu or free camera is up and the game
