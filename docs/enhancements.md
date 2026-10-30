@@ -102,7 +102,7 @@ adds to the view) is held at 0, folded into the view angles as aiming
 starts and taken back out as it ends, so the camera does not move at either
 (`ts2_steady_aim`). The keys
 are PC-shooter defaults on the Default control setup's actions
-(`config/input_defaults.json`), the wheel zooms while aiming and changes
+(`config/input_defaults.json`), the wheel zooms while looking through a scope and changes
 weapon otherwise, and Escape pauses in a level and backs out of menus. Not
 yet: the PAL release's look, mounted guns and look's mode 7, which stay on
 the right stick; clicking the menus. The plan below is how it looked

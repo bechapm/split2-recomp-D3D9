@@ -38,8 +38,9 @@
  *     to Start, which pauses in a level, but in the front end Start
  *     accepts, so there Escape reads as B (back). And the mouse wheel,
  *     bound to the D-pad's left and right (previous and next weapon), is
- *     its up and down (zoom in and out) while aiming, as the game's Default
- *     controls have the D-pad.
+ *     its up and down (zoom in and out) while zoomed in through a scope, as
+ *     the game's Default controls have the D-pad. Aiming with no scope (or
+ *     an item with no crosshair) leaves the wheel changing weapon.
  *
  * The keys themselves are config/input_defaults.json, the title's own layout
  * (recomp_title_input in CMakeLists.txt).
@@ -89,6 +90,8 @@ extern ptrdiff_t g_xbox_mem_offset;
 /* The field of view the turn rate is measured against: look multiplies by
  * fov / 60, and so does the mouse. */
 #define TS2_MOUSE_FOV       60.0f
+/* Narrower than this, the camera is looking through a scope. */
+#define TS2_ZOOMED_FOV      55.0f
 
 static struct {
     unsigned frame;         /* presents seen */
@@ -149,6 +152,19 @@ static int m_camera_is_eye(uint32_t p)
 
 /* ── the bindings filter ─────────────────────────────────────── */
 
+/* The camera is zoomed in: aim mode with a scope (60 to 17 measured in
+ * Siberia; aim mode without one leaves the field of view at 60). */
+static int m_zoomed(void)
+{
+    uint32_t ctx = A->context ? M_MEM32(A->context) : 0;
+    float fov;
+
+    if (!m_ptr_ok(ctx))
+        return 0;
+    fov = M_MEMF(ctx + A->context_fov);
+    return fov > 1.0f && fov < TS2_ZOOMED_FOV;
+}
+
 static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
 {
     uint32_t p;
@@ -163,10 +179,13 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
         }
         return;
     }
-    /* Aiming: the wheel (the D-pad's left and right, from the mouse or the
-     * keyboard) zooms, as the D-pad's up and down do. */
+    /* Looking through a scope: the wheel (the D-pad's left and right, from
+     * the mouse or the keyboard) zooms, as the D-pad's up and down do.
+     * Only then: aim mode with a gun that has no scope, or an item with no
+     * crosshair at all (the temporal uplink), zooms nothing, and the wheel
+     * would stop changing weapon with nothing on screen to say why. */
     p = m_player1();
-    if (p && M_MEM32(p + TS2_PM_AIMING)) {
+    if (p && M_MEM32(p + TS2_PM_AIMING) && m_zoomed()) {
         if (kbm->wButtons & XBOX_GAMEPAD_DPAD_LEFT) {
             pad->wButtons &= (WORD)~XBOX_GAMEPAD_DPAD_LEFT;
             pad->wButtons |= XBOX_GAMEPAD_DPAD_UP;

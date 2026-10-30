@@ -91,7 +91,7 @@ laid out the way PC shooters are:
 | Fire | Left mouse button | Right trigger |
 | Alternate fire | Middle mouse button | Left trigger |
 | Aim (and zoom a scoped gun) | Right mouse button | Right stick press |
-| Zoom in, out while aiming | Mouse wheel up, down (or Z, X) | D-pad up, down |
+| Zoom in, out through a scope | Mouse wheel up, down (or Z, X) | D-pad up, down |
 | Previous, next weapon | Mouse wheel up, down (or the left and right arrows) | D-pad left, right |
 | Activate (doors, switches) | E (or Enter) | A |
 | Reload | R | Y |
