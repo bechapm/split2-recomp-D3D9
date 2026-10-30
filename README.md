@@ -101,8 +101,11 @@ laid out the way PC shooters are:
 | Back button | Tab | Back |
 
 The mouse turns you by so many degrees a count, as in a PC shooter, rather
-than pushing the stick; the game's own Inverse Look setting applies to it, and
-most players will want the game's Auto Aim off. Change any of it in the
+than pushing the stick. It is not inverted, whatever the game's own Inverse
+Look says (`ts2_mouse_invert = 1` in the settings file inverts it). While you
+aim, the camera's breathing sway fades out so the crosshair stays where you
+put it (`ts2_steady_aim = 0` keeps it). Most players will want the game's
+Auto Aim off. Change any of it in the
 launcher's Input tab (the mouse sensitivity is there too).
 
 While playing:

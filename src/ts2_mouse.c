@@ -23,6 +23,14 @@
  *     look stick is always still, so it would pull against every aim; while
  *     mouse look is on, look's pitch change with a still stick is undone.
  *
+ *   steady aim: the camera sways with the player's breathing, all the
+ *     time, more after running (the breathing function, sub_00140E10 in
+ *     the USA release, sets the two angles the camera adds to the view).
+ *     A mouse holds the view still, so the sway is all that moves it, and
+ *     it moves the crosshair off what you are aiming at. While player 1
+ *     aims (right mouse, or the pad's R3), the sway fades out over a
+ *     fraction of a second, and back in after. ts2_steady_aim = 0 keeps it.
+ *
  *   one key, two meanings (the toolkit's bindings filter): Escape is bound
  *     to Start, which pauses in a level, but in the front end Start
  *     accepts, so there Escape reads as B (back). And the mouse wheel,
@@ -40,6 +48,7 @@
  *
  * Settings (the title's settings file, or the environment variable):
  *   ts2_mouse_invert = 1    RECOMP_TS2_MOUSE_INVERT   mouse up looks down
+ *   ts2_steady_aim = 0      RECOMP_TS2_STEADY_AIM     sway while aiming too
  */
 #include <math.h>
 #include <stddef.h>
@@ -77,6 +86,9 @@ extern ptrdiff_t g_xbox_mem_offset;
 /* The field of view the turn rate is measured against: look multiplies by
  * fov / 60, and so does the mouse. */
 #define TS2_MOUSE_FOV       60.0f
+/* How much of the breathing sway goes or comes back each tick: all of it
+ * in eight ticks, 0.13 s at the game's 60. */
+#define TS2_STEADY_STEP     0.125f
 
 static struct {
     unsigned frame;         /* presents seen */
@@ -87,7 +99,9 @@ static struct {
     const char *seq;        /* RECOMP_TS2_MOUSE_SEQ, what is left of it */
     volatile int held;      /* ts2_mouse_hold */
     int      invert;        /* ts2_mouse_invert */
-} M;
+    int      steady;        /* ts2_steady_aim */
+    float    sway;          /* how much of the breathing sway is let through */
+} M = { .sway = 1.0f };
 
 void ts2_mouse_hold(int on)
 {
@@ -194,6 +208,7 @@ void ts2_mouse_frame(void)
     M.log = recomp_config_bool("RECOMP_TS2_MOUSE_LOG", NULL, 0);
     M.seq = getenv("RECOMP_TS2_MOUSE_SEQ");
     M.invert = recomp_config_bool("RECOMP_TS2_MOUSE_INVERT", "ts2_mouse_invert", 0);
+    M.steady = recomp_config_bool("RECOMP_TS2_STEADY_AIM", "ts2_steady_aim", 1);
     if (A->player_base) {
         recomp_mouse_set_direct(1);
         fprintf(stderr, "[TS2-MOUSE] the mouse turns the player directly%s\n",
@@ -266,8 +281,35 @@ void ts2_mouse_look(void (*look)(void))
     if (M.log && M.frame - M.logged >= (took ? 10u : 60u)) {
         M.logged = M.frame;
         fprintf(stderr, "[TS2-MOUSE] frame %u: moved %.0f,%.0f  yaw %.1f pitch %.1f "
-                        "(limit %.1f)  fov %.1f  flags 0x%X mode %u aiming %u\n",
+                        "(limit %.1f)  fov %.1f  flags 0x%X mode %u aiming %u  "
+                        "sway %.2f,%.2f x%.2f\n",
                 M.frame, dx, dy, yaw, pitch, limit, fov, flags, mode,
-                M_MEM32(p + TS2_PM_AIMING));
+                M_MEM32(p + TS2_PM_AIMING), M_MEMF(p + TS2_PM_SWAY_YAW),
+                M_MEMF(p + TS2_PM_SWAY_PITCH), M.sway);
+    }
+}
+
+/* ── breathing ───────────────────────────────────────────────── */
+
+void ts2_mouse_breath(void (*breath)(void))
+{
+    uint32_t p;
+    float target;
+
+    breath();
+    p = A->current_player ? M_MEM32(A->current_player) : 0;
+    if (!M.steady || !p || p != m_player1())
+        return;
+
+    /* The sway is made afresh each tick from the phases, which run on, so
+     * scaling it here keeps nothing: it comes back in step. */
+    target = M_MEM32(p + TS2_PM_AIMING) ? 0.0f : 1.0f;
+    if (M.sway > target)
+        M.sway = M.sway - TS2_STEADY_STEP > target ? M.sway - TS2_STEADY_STEP : target;
+    else if (M.sway < target)
+        M.sway = M.sway + TS2_STEADY_STEP < target ? M.sway + TS2_STEADY_STEP : target;
+    if (M.sway < 1.0f) {
+        M_MEMF(p + TS2_PM_SWAY_YAW) = M_MEMF(p + TS2_PM_SWAY_YAW) * M.sway;
+        M_MEMF(p + TS2_PM_SWAY_PITCH) = M_MEMF(p + TS2_PM_SWAY_PITCH) * M.sway;
     }
 }

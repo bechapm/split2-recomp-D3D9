@@ -94,8 +94,11 @@ reads "B" and acts as the game's A.
 
 **Started 29 Oct 2026 (USA release):** the mouse adds to the view angles
 directly after the game's own look function, `sub_00148A60`, scaled by the
-field of view, with auto lookahead held off and the game's Inverse Look
-honoured (`src/ts2_mouse.c`, addresses in `config/us/mouse.inc`). The keys
+field of view, with auto lookahead held off, not inverted by the game's
+Inverse Look (`ts2_mouse_invert`), and only when the camera is the player's
+eye (`src/ts2_mouse.c`, addresses in `config/us/mouse.inc`). While aiming,
+the breathing sway (`sub_00140E10`, the angles at +0x188/+0x18C the camera
+adds to the view) fades out (`ts2_steady_aim`). The keys
 are PC-shooter defaults on the Default control setup's actions
 (`config/input_defaults.json`), the wheel zooms while aiming and changes
 weapon otherwise, and Escape pauses in a level and backs out of menus. Not

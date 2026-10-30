@@ -55,6 +55,16 @@ void sub_001CC100(void) { ts2_present(sub_001CC100_gen); }
 extern void sub_00148A60_gen(void);
 void sub_00148A60(void) { ts2_mouse_look(sub_00148A60_gen); }
 
+/* breathing is sub_00140E10, called once a tick from the player update
+ * (0x00146BE0) on the record at [0x00497100]: it steps two phases
+ * (+0x180, +0x184, degrees) and sets the sway the camera adds to the view
+ * angles, +0x188 = sin(+0x180) * amplitude / 2 to the yaw and +0x18C =
+ * sin(+0x184) * amplitude to the pitch (read at 0x000351CD). The
+ * amplitude is +0x17C, which grows with exertion, or 0 while +0xC bit 2 is
+ * set. The sway is taken out while aiming afterwards (src/ts2_mouse.c). */
+extern void sub_00140E10_gen(void);
+void sub_00140E10(void) { ts2_mouse_breath(sub_00140E10_gen); }
+
 /* reserve is sub_001C8E35 (PAL 0x001C9265): 52 callers, a switch on its
  * first argument (the primitive type), and it calls the flush. flush is
  * sub_001C98AF (PAL 0x001C9CDF): it draws through sub_001CC1D0, the game's

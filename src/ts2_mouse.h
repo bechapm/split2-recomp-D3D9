@@ -29,6 +29,8 @@ enum {
     TS2_PM_YAW      = 0x148,  /* degrees, 0..360; turning right lowers it */
     TS2_PM_PITCH    = 0x14C,  /* degrees; up is positive (measured: -40 shows the floor) */
     TS2_PM_FLAGS    = 0x00C,  /* bit 3: turns by look; others slow it */
+    TS2_PM_SWAY_YAW   = 0x188, /* breathing: degrees the camera adds to the yaw */
+    TS2_PM_SWAY_PITCH = 0x18C, /* and to the pitch */
     TS2_PM_MODE     = 0x158,  /* 6, 8 (a mounted gun) and 9: look does not turn P */
     TS2_PM_AIMING   = 0x884,  /* non-zero in aim mode */
     TS2_PM_HELD     = 0x998,  /* non-zero: look does nothing at all */
@@ -47,5 +49,10 @@ void ts2_mouse_frame(void);
  * record at current_player by the stick): for player 1, the mouse's motion
  * is then added to the view angles directly. */
 void ts2_mouse_look(void (*look)(void));
+
+/* breathing (wraps the release's breathing function, which sets the sway
+ * the camera adds to the record at current_player's view): while player 1
+ * aims, the sway fades out. */
+void ts2_mouse_breath(void (*breath)(void));
 
 #endif
