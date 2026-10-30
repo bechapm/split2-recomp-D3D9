@@ -108,6 +108,15 @@ void sub_0005F4F0(void) { ts2_dev_target_check(sub_0005F4F0_gen); }
  * bind such a model's textures (src/ts2_devtools.c, config/us/devtools.inc). */
 extern void sub_0012C820_gen(void);
 void sub_0012C820(void) { ts2_dev_model_load(sub_0012C820_gen); }
+/* sub_00086970(path, 1, 0) is that loader's fallback when the file is not
+ * held whole in a mounted pak's memory (a mod's file is not): it allocates
+ * a buffer (sub_000E9D60), reads the file into it through the pak read
+ * sub_00086450 and returns it; the model is inside it (list = buf+[buf],
+ * M = buf+[buf+4]). Not PAL's sub_00086970, which is the overlapped read's
+ * poll (USA sub_00086910). Wrapped so the tools know the data of a model
+ * they bind (code; measured). */
+extern void sub_00086970_gen(void);
+void sub_00086970(void) { ts2_dev_file_read(sub_00086970_gen); }
 
 /* present is sub_001CC100 (PAL 0x001CC530): the only function in the game's
  * code that calls D3DDevice_Swap. */

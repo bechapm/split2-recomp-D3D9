@@ -819,9 +819,11 @@ void ts2_dev_target_check(void (*check)(void))
 }
 
 /* Binding writes each material's texture slot over its id, in the model's
- * own data, which stays in memory with the pak: a level restarted loads the
- * same copy again, ids already replaced. So the ids are kept here the first
- * time a record is bound and put back before it is bound again. */
+ * own data. A file held whole in a pak's memory stays there: a level
+ * restarted loads the same copy again, ids already replaced, so for those
+ * the ids are kept here the first time a record is bound and put back
+ * before it is bound again. A file read into a buffer of its own (a mod's)
+ * is fresh each load and bound as it is. */
 static struct { uint32_t rec, id; } g_dev_mat[2048];
 static int g_dev_mat_n;
 static uint32_t g_dev_prepared[256];    /* material lists already prepared */
@@ -839,34 +841,60 @@ static void dev_bind_level(uint32_t level)
     }
 }
 
+/* The buffer the model loader's fallback read the file into, while the
+ * loader runs. */
+static int      g_dev_model_loading;
+static uint32_t g_dev_read_path, g_dev_read_buf;
+
+void ts2_dev_file_read(void (*read)(void))
+{
+    uint32_t path = DEV_MEM32(g_esp + 4);
+
+    read();
+    if (g_dev_model_loading) {
+        g_dev_read_path = path;
+        g_dev_read_buf = g_eax;
+    }
+}
+
 static void dev_bind_textures(uint32_t path, uint32_t m)
 {
     uint32_t list = DEV_MEM32(m + A->model_materials), data, args[3], rec, id;
-    int i, k, prepared = 0;
+    int i, k, prepared = 0, own = 0;
 
     if (!dev_ptr_ok(list))
         return;
+    /* The file held whole in a pak's memory, else the buffer it was read
+     * into. */
     data = dev_guest_call(A->pak_data, dev_scratch(0), &path, 1);
+    if (!dev_ptr_ok(data) && g_dev_read_path == path) {
+        /* A buffer of its own, fresh each load: nothing kept applies to it,
+         * and its address may be another model's from before. */
+        data = g_dev_read_buf;
+        own = 1;
+    }
     if (!dev_ptr_ok(data)) {
-        fprintf(stderr, "[TS2-DEV] a model loaded mid-level is in no pak read into memory; "
+        fprintf(stderr, "[TS2-DEV] a model loaded mid-level: its data was not found; "
                 "its textures are not bound\n");
         return;
     }
-    for (i = 0; i < g_dev_prepared_n; i++)
+    for (i = 0; !own && i < g_dev_prepared_n; i++)
         prepared |= g_dev_prepared[i] == list;
     if (!prepared) {
         args[0] = list;
         args[1] = data;
         dev_guest_call(A->material_prepare, dev_scratch(0), args, 2);
-        if (g_dev_prepared_n < (int)(sizeof g_dev_prepared / sizeof g_dev_prepared[0]))
+        if (!own && g_dev_prepared_n < (int)(sizeof g_dev_prepared / sizeof g_dev_prepared[0]))
             g_dev_prepared[g_dev_prepared_n++] = list;
     }
     list = DEV_MEM32(m + A->model_materials);
     for (rec = list, i = 0; dev_ptr_ok(rec) && i < 512; rec += 0x10, i++) {
         id = DEV_MEM32(rec);
-        for (k = 0; k < g_dev_mat_n && g_dev_mat[k].rec != rec; k++)
+        for (k = 0; !own && k < g_dev_mat_n && g_dev_mat[k].rec != rec; k++)
             ;
-        if (k < g_dev_mat_n) {
+        if (own) {
+            /* bound once, as loaded */
+        } else if (k < g_dev_mat_n) {
             id = g_dev_mat[k].id;
             DEV_MEM32(rec) = id;
         } else if (id != 0xFFFFFFFFu && g_dev_mat_n < (int)(sizeof g_dev_mat / sizeof g_dev_mat[0])) {
@@ -893,7 +921,10 @@ void ts2_dev_model_load(void (*load)(void))
 {
     uint32_t path = DEV_MEM32(g_esp + 4), m;
 
+    g_dev_read_path = g_dev_read_buf = 0;
+    g_dev_model_loading++;
     load();
+    g_dev_model_loading--;
     m = g_eax;
     if (!D.keys || !A->texture_load || !A->material_prepare || !A->pak_data ||
         !dev_ptr_ok(m) || !dev_ptr_ok(path) || !dev_in_level())

@@ -157,4 +157,10 @@ void ts2_dev_target_check(void (*check)(void));
  * tools gave from another level's data -- has its textures bound. */
 void ts2_dev_model_load(void (*load)(void));
 
+/* The read of a whole file into a buffer of its own (wraps the release's
+ * read(path, ...), which returns the buffer): the model loader's fallback
+ * when the file is not held whole in a pak's memory, as a mod's file is
+ * not. Inside the model loader, the buffer is the model's data. */
+void ts2_dev_file_read(void (*read)(void));
+
 #endif
