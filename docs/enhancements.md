@@ -106,9 +106,17 @@ are PC-shooter defaults on the Default control setup's actions
 weapon otherwise, and Escape pauses in a level and backs out of menus. On
 a mounted gun (look's modes 7 and 8) the mouse turns the angles look's stick
 turns before look runs, so the gun's arc holds it, and the debugging tools'
-free camera turns by it too (`ts2_mouse_turn`). Not yet: the PAL release's
-look; clicking the menus. The plan below is how it looked
-before.
+free camera turns by it too (`ts2_mouse_turn`). **The menus (30 Oct
+2026):** while a menu is up (the front end, or the pause menu) the mouse is a
+pointer (the toolkit's `recomp_pointer_want`): moving it onto an item of the
+panel with the focus selects it as the panel's own update does (the item's
+selected flag, the panel's row and column, the move sound), a click presses
+A for it (or steps an option on), the right button is B and the wheel the
+D-pad's up and down (`src/ts2_menu_mouse.c`, addresses in
+`config/us/menu_mouse.inc`). The boxes are the game's own: each item's box
+from its panel's corner, as the panel draws it (`sub_000F2040`). Not yet:
+the PAL release; screens drawn without panels (if any) and MapMaker's grid
+cursor. The plan below is how it looked before.
 
 The toolkit has no mouse input today.
 

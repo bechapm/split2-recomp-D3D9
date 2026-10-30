@@ -98,6 +98,7 @@ laid out the way PC shooters are:
 | Crouch | Left Ctrl (or C) | Left stick press |
 | Pause | Escape | Start |
 | Menus: accept, back | Enter, Escape (or Backspace) | A, B |
+| Menus: point, choose, back, scroll | The mouse, left button, right button, wheel | |
 | Back button | Tab | Back |
 
 The mouse turns you by so many degrees a count, as in a PC shooter, rather
@@ -107,6 +108,12 @@ aim, the camera's breathing sway stops where it is, so the crosshair stays
 where you put it (`ts2_steady_aim = 0` keeps it). Most players will want the game's
 Auto Aim off. Change any of it in the
 launcher's Input tab (the mouse sensitivity is there too).
+
+In the menus (the front end, and the pause menu in a level) the mouse is a
+pointer instead: point at an option to select it, click to choose it (a
+click on a setting with values steps it to the next), right-click to go
+back, and turn the wheel to scroll a long list. The keys and the pad still
+work beside it. USA release only for now.
 
 While playing:
 

@@ -70,6 +70,7 @@ enum {
  * reads a neutral pad), look turns nothing by the mouse and leaves its
  * motion for whoever takes it (recomp_mouse_take). */
 void ts2_mouse_hold(int on);
+int  ts2_mouse_is_held(void);
 
 /* Once a frame, after the game's present. */
 void ts2_mouse_frame(void);

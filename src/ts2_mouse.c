@@ -51,6 +51,9 @@
  *   changing weapon ends aim mode, from the wheel, the keys or the pad, so
  *     the next gun does not come up already aimed (straight into a scope).
  *
+ *   the menus: while one is up the mouse is a pointer instead, and points
+ *     at and clicks their items (src/ts2_menu_mouse.c).
+ *
  * The keys themselves are config/input_defaults.json, the title's own layout
  * (recomp_title_input in CMakeLists.txt).
  *
@@ -73,6 +76,7 @@
 #include <string.h>
 
 #include "ts2_mouse.h"
+#include "ts2_menu_mouse.h"
 #include "recomp/gen/recomp_cpu.h"   /* g_esp */
 #include "recomp/ts2_region.h"
 #include "input_bindings.h"          /* xboxrecomp: the mouse and the filter */
@@ -123,6 +127,11 @@ static struct {
 void ts2_mouse_hold(int on)
 {
     M.held = on;
+}
+
+int ts2_mouse_is_held(void)
+{
+    return M.held;
 }
 
 /* A guest pointer worth following: low memory, or the contiguous window at
@@ -185,6 +194,7 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *from_
 
     if (port != 0)
         return;
+    ts2_menu_filter(pad);                   /* a click on a menu (src/ts2_menu_mouse.c) */
     if (M.key_buttons && M.frame < M.key_until) {
         keys.wButtons |= M.key_buttons;     /* RECOMP_TS2_MOUSE_SEQ */
         pad->wButtons |= M.key_buttons;
@@ -278,6 +288,7 @@ void ts2_mouse_frame(void)
 {
     M.frame++;
     m_seq();
+    ts2_menu_frame();                       /* the menus under the mouse */
     if (M.started)
         return;
     M.started = 1;
