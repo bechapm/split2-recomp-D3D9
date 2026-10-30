@@ -1,3 +1,5 @@
 # Split2-Recomp D3D9, RTX Remix, & Other Features
 
-Fork of the recompiled Xbox version of Timesplitters 2 to experiment with a D3D9 backend. D3D9 support allows for Nvidia's RTX remix runtime to intercept the fixed function pipeline and inject path traced lighting and other modern graphical rendering features. In addition to D3D9 & RTX Remix, this fork is also intended for the development of other quality of life features for the Split2-Recomp including things such as direct mouse input, modern keybindings, developer tools (no-clip, wireframe view, coordinates, teleporting, cheats, etc.), and more. 
+Fork of the recompiled Xbox version of Timesplitters 2 to experiment with a D3D9 backend. D3D9 support allows for Nvidia's RTX remix runtime to intercept the fixed function pipeline and inject path traced lighting and other modern graphical rendering features. In addition to D3D9 & RTX Remix, this fork is also intended for the development of other quality of life features for the Split2-Recomp including things such as direct mouse input, modern keybindings, developer tools (no-clip, wireframe view, coordinates, teleporting, cheats, etc.), and more.
+
+This repository, its releases and xboxrecomp contain no game code or assets.
