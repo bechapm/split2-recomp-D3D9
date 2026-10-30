@@ -11,12 +11,18 @@
  *     since last time are added to the same two angles directly: so many
  *     degrees a count, whatever the speed, which is what mouse aim is on a
  *     PC. Only for player 1, only when look itself turned the player (not
- *     on a mounted gun, not in a menu, where look is not called or turns
- *     nothing), only when the camera is the player's own eye (look runs
- *     through a level's opening fly-over too), and scaled by the field of
+ *     in a menu, where look is not called or turns nothing), only when the
+ *     camera is the player's own eye (look runs through a level's opening
+ *     fly-over too), and scaled by the field of
  *     view so a scope zoomed four times turns four times finer. Not
  *     inverted unless ts2_mouse_invert says so: the game's own Inverse
  *     Look is on in a new profile, and a PC shooter's mouse is not.
+ *     On a mounted gun, look turns the gun (or the player, held within
+ *     the gun's arc): the mouse turns the same angles, before look, so
+ *     the gun's arc holds it as it holds the pad.
+ *
+ *   the debugging tools' free camera takes the mouse's turn from here
+ *     (ts2_mouse_turn), while look leaves it alone.
  *
  *   auto lookahead: with that preference on, look tilts the view back to
  *     level while you run with nothing on the look stick. With a mouse the
@@ -292,39 +298,17 @@ void ts2_mouse_frame(void)
 
 /* ── look ────────────────────────────────────────────────────── */
 
-void ts2_mouse_look(void (*look)(void))
+/* The mouse's motion since it was last taken, as degrees to turn right and
+ * up. Motion that waited while nothing took it (a menu, a cutscene, a load)
+ * is old: the first turn after it starts from still. */
+static int m_take(float *right, float *up)
 {
-    uint32_t p, stick, flags, mode;
-    float pitch0 = 0.0f, dx, dy, deg, fov, limit, yaw, pitch;
-    int mine, took;
+    float dx, dy, deg, fov;
+    int took;
 
-    p = A->current_player ? M_MEM32(A->current_player) : 0;
-    stick = M_MEM32(g_esp + 4);             /* [esp] is the return address */
-    mine = p && p == m_player1();
-    if (mine)
-        pitch0 = M_MEMF(p + TS2_PM_PITCH);
-    look();
-    if (!mine || M.held || !recomp_mouse_look())
-        return;
-
-    /* What look turns by itself: the player record, by the look stick.
-     * The rest (a mounted gun, the modes it leaves alone) stays the pad's. */
-    flags = M_MEM32(p + TS2_PM_FLAGS);
-    mode = M_MEM32(p + TS2_PM_MODE);
-    if (!(flags & 8) || M_MEM32(p + TS2_PM_HELD) || mode == 6 || mode == 7 ||
-        mode == 8 || mode == 9 || !m_camera_is_eye(p))
-        return;
-
-    /* Auto lookahead with a still look stick: not with a mouse. */
-    pitch = M_MEMF(p + TS2_PM_PITCH);
-    if (m_ptr_ok(stick) && M_MEMF(stick + 4) == 0.0f)
-        pitch = pitch0;
-
-    /* Motion that waited while nothing took it (a menu, a cutscene, a
-     * load) is old: the first look after it starts from still. */
     took = recomp_mouse_take(&dx, &dy);
     if (M.frame - M.took > 2u)
-        dx = dy = 0.0f;
+        dx = dy = 0.0f, took = 0;
     M.took = M.frame;
 
     deg = (float)(TS2_MOUSE_DEGREES *
@@ -333,14 +317,117 @@ void ts2_mouse_look(void (*look)(void))
               ? M_MEMF(M_MEM32(A->context) + A->context_fov) : TS2_MOUSE_FOV;
     if (fov > 1.0f && fov < 170.0f)
         deg *= fov / TS2_MOUSE_FOV;
+    *right = dx * deg;
+    *up = (M.invert ? dy : -dy) * deg;      /* screen y grows down */
+    return took;
+}
 
-    yaw = M_MEMF(p + TS2_PM_YAW) - dx * deg;      /* turning right lowers it */
-    while (yaw < 0.0f)
-        yaw += 360.0f;
-    while (yaw >= 360.0f)
-        yaw -= 360.0f;
-    /* Screen y grows down; up on the mouse is up on the stick. */
-    pitch += (M.invert ? dy : -dy) * deg;
+int ts2_mouse_turn(float *right, float *up)
+{
+    *right = *up = 0.0f;
+    if (!A->player_base || !recomp_mouse_look())
+        return 0;
+    return m_take(right, up);
+}
+
+static float m_wrap360(float a)
+{
+    while (a < 0.0f)
+        a += 360.0f;
+    while (a >= 360.0f)
+        a -= 360.0f;
+    return a;
+}
+
+/* A mounted gun: the mouse turns what look's stick turns, before look runs,
+ * so look's own wrap and limits (the gun's arc) apply to it as to the pad.
+ * Mode 8 turns the gun (its yaw the same way round as the player's, its
+ * pitch the other); mode 7 turns the player, and look holds the player
+ * within the gun's arc. Only where look would turn anything. */
+static void m_mount(uint32_t p, uint32_t mode)
+{
+    uint32_t chr, obj, gun, gflags;
+    float right, up;
+    int took;
+
+    if (M_MEM32(p + TS2_PM_HELD))
+        return;
+    if (mode == TS2_MODE_MOUNT_CLAMPED) {
+        if (!(M_MEM32(p + TS2_PM_FLAGS) & 8))
+            return;
+        took = m_take(&right, &up);
+        M_MEMF(p + TS2_PM_YAW) = m_wrap360(M_MEMF(p + TS2_PM_YAW) - right);
+        M_MEMF(p + TS2_PM_PITCH) = M_MEMF(p + TS2_PM_PITCH) + up;
+        gun = 0;
+    } else {
+        chr = M_MEM32(p + TS2_PM_CHARACTER);
+        chr = m_ptr_ok(chr) ? M_MEM32(chr + TS2_OBJ_DATA) : 0;
+        obj = m_ptr_ok(chr) ? M_MEM32(chr + TS2_CHR_MOUNT) : 0;
+        gun = m_ptr_ok(obj) ? M_MEM32(obj + TS2_OBJ_DATA) : 0;
+        if (!m_ptr_ok(gun) || M_MEM32(gun + TS2_GUN_KIND) == 0 || M_MEM32(gun + TS2_GUN_KIND) == 8)
+            return;
+        gflags = M_MEM32(gun + TS2_GUN_FLAGS);
+        if (M_MEM32(obj + TS2_OBJ_TYPE) != TS2_OBJ_TYPE_FREE_GUN &&
+            (gflags & 0x2) && !(gflags & 0x400))
+            return;                         /* look zeroes the stick for it */
+        took = m_take(&right, &up);
+        M_MEMF(gun + TS2_GUN_YAW) = M_MEMF(gun + TS2_GUN_YAW) - right;
+        M_MEMF(gun + TS2_GUN_PITCH) = M_MEMF(gun + TS2_GUN_PITCH) - up;
+    }
+    if (M.log && M.frame - M.logged >= (took ? 10u : 60u)) {
+        M.logged = M.frame;
+        if (gun)
+            fprintf(stderr, "[TS2-MOUSE] frame %u: mounted gun (mode %u) turned %.2f,%.2f  "
+                            "yaw %.1f (%.1f..%.1f) pitch %.1f (%.1f..%.1f)\n",
+                    M.frame, mode, right, up, M_MEMF(gun + TS2_GUN_YAW),
+                    M_MEMF(gun + TS2_GUN_YAW_MIN), M_MEMF(gun + TS2_GUN_YAW_MAX),
+                    M_MEMF(gun + TS2_GUN_PITCH), M_MEMF(gun + TS2_GUN_PITCH_MIN),
+                    M_MEMF(gun + TS2_GUN_PITCH_MAX));
+        else
+            fprintf(stderr, "[TS2-MOUSE] frame %u: mounted (mode %u) turned %.2f,%.2f  "
+                            "yaw %.1f pitch %.1f\n",
+                    M.frame, mode, right, up, M_MEMF(p + TS2_PM_YAW), M_MEMF(p + TS2_PM_PITCH));
+    }
+}
+
+void ts2_mouse_look(void (*look)(void))
+{
+    uint32_t p, stick, flags, mode;
+    float pitch0 = 0.0f, right, up, limit, yaw, pitch;
+    int mine, took;
+
+    p = A->current_player ? M_MEM32(A->current_player) : 0;
+    stick = M_MEM32(g_esp + 4);             /* [esp] is the return address */
+    mine = p && p == m_player1() && !M.held && recomp_mouse_look() && m_in_level();
+    if (mine) {
+        pitch0 = M_MEMF(p + TS2_PM_PITCH);
+        mode = M_MEM32(p + TS2_PM_MODE);
+        if (mode == TS2_MODE_MOUNT_CLAMPED || mode == TS2_MODE_MOUNT) {
+            m_mount(p, mode);
+            look();
+            return;
+        }
+    }
+    look();
+    if (!mine)
+        return;
+
+    /* What look turns by itself: the player record, by the look stick.
+     * The rest (the modes it leaves alone) stays the pad's. */
+    flags = M_MEM32(p + TS2_PM_FLAGS);
+    mode = M_MEM32(p + TS2_PM_MODE);
+    if (!(flags & 8) || M_MEM32(p + TS2_PM_HELD) || mode == 6 || mode == 9 ||
+        mode == TS2_MODE_MOUNT_CLAMPED || mode == TS2_MODE_MOUNT || !m_camera_is_eye(p))
+        return;
+
+    /* Auto lookahead with a still look stick: not with a mouse. */
+    pitch = M_MEMF(p + TS2_PM_PITCH);
+    if (m_ptr_ok(stick) && M_MEMF(stick + 4) == 0.0f)
+        pitch = pitch0;
+
+    took = m_take(&right, &up);
+    yaw = m_wrap360(M_MEMF(p + TS2_PM_YAW) - right);   /* turning right lowers it */
+    pitch += up;
     limit = A->pitch_limit ? M_MEMF(A->pitch_limit) : 90.0f;
     if (limit > 0.0f && limit <= 90.0f) {
         if (pitch > limit)  pitch = limit;
@@ -351,10 +438,10 @@ void ts2_mouse_look(void (*look)(void))
 
     if (M.log && M.frame - M.logged >= (took ? 10u : 60u)) {
         M.logged = M.frame;
-        fprintf(stderr, "[TS2-MOUSE] frame %u: moved %.0f,%.0f  yaw %.1f pitch %.1f "
-                        "(limit %.1f)  fov %.1f  flags 0x%X mode %u aiming %u  "
+        fprintf(stderr, "[TS2-MOUSE] frame %u: turned %.2f,%.2f  yaw %.1f pitch %.1f "
+                        "(limit %.1f)  flags 0x%X mode %u aiming %u  "
                         "sway %.2f,%.2f%s\n",
-                M.frame, dx, dy, yaw, pitch, limit, fov, flags, mode,
+                M.frame, right, up, yaw, pitch, limit, flags, mode,
                 M_MEM32(p + TS2_PM_AIMING), M_MEMF(p + TS2_PM_SWAY_YAW),
                 M_MEMF(p + TS2_PM_SWAY_PITCH), M.still ? " held" : "");
     }
@@ -394,13 +481,7 @@ static void m_unaim_tick(uint32_t p)
  * shows) is kept when that sway is taken away (sign 1) or given back (-1). */
 static void m_fold_sway(uint32_t p, float sign, float sway_yaw, float sway_pitch)
 {
-    float yaw = M_MEMF(p + TS2_PM_YAW) + sign * sway_yaw;
-
-    while (yaw < 0.0f)
-        yaw += 360.0f;
-    while (yaw >= 360.0f)
-        yaw -= 360.0f;
-    M_MEMF(p + TS2_PM_YAW) = yaw;
+    M_MEMF(p + TS2_PM_YAW) = m_wrap360(M_MEMF(p + TS2_PM_YAW) + sign * sway_yaw);
     M_MEMF(p + TS2_PM_PITCH) = M_MEMF(p + TS2_PM_PITCH) + sign * sway_pitch;
 }
 

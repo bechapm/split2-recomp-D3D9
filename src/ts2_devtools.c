@@ -147,6 +147,7 @@ extern int         xbox_InputRead(unsigned port, uint16_t *buttons, uint8_t anal
 #define DEV_MEMF(a)  (*(volatile float *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 #define DEV_MEM8(a)  (*(volatile uint8_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 #define DEV_MEM16(a) (*(volatile uint16_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
+#define DEV_RADIANS  0.017453292f   /* a degree */
 
 /* Windows virtual-key codes (the toolkit translates them off Windows). */
 enum {
@@ -644,12 +645,15 @@ static void dev_freecam_forward(float f[3])
 static void dev_freecam_step(void)
 {
     const float turn_rate = 2.2f;       /* radians a second at full stick */
-    float move[3], turn[2], speed, f[3], a, c, s, h[3], r[3];
+    float move[3], turn[2], mouse[2], speed, f[3], a, c, s, h[3], r[3];
     float step = 6.0f * TS2_FRAME_SECONDS;
     int i;
 
     dev_freecam_input(move, turn, &speed);
-    a = turn[0] * turn_rate * TS2_FRAME_SECONDS;
+    /* The mouse turns it as it turns the player: so many degrees a count,
+     * not a speed (look leaves the motion while the camera is up). */
+    ts2_mouse_turn(&mouse[0], &mouse[1]);
+    a = turn[0] * turn_rate * TS2_FRAME_SECONDS + mouse[0] * DEV_RADIANS;
     if (a != 0.0f) {
         c = cosf(a);
         s = sinf(a);
@@ -662,7 +666,7 @@ static void dev_freecam_step(void)
         dev_normalize(D.fc_fwd_h);
         dev_normalize(D.fc_right);
     }
-    D.fc_pitch += turn[1] * turn_rate * TS2_FRAME_SECONDS;
+    D.fc_pitch += turn[1] * turn_rate * TS2_FRAME_SECONDS + mouse[1] * DEV_RADIANS;
     if (D.fc_pitch > 1.5f) D.fc_pitch = 1.5f;
     if (D.fc_pitch < -1.5f) D.fc_pitch = -1.5f;
 
