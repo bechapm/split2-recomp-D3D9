@@ -52,7 +52,7 @@ void ts2_mouse_look(void (*look)(void));
 
 /* breathing (wraps the release's breathing function, which sets the sway
  * the camera adds to the record at current_player's view): while player 1
- * aims, the sway fades out. */
+ * aims, the sway is held at 0 without moving the view. */
 void ts2_mouse_breath(void (*breath)(void));
 
 #endif

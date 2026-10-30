@@ -28,8 +28,11 @@
  *     the USA release, sets the two angles the camera adds to the view).
  *     A mouse holds the view still, so the sway is all that moves it, and
  *     it moves the crosshair off what you are aiming at. While player 1
- *     aims (right mouse, or the pad's R3), the sway fades out over a
- *     fraction of a second, and back in after. ts2_steady_aim = 0 keeps it.
+ *     aims (right mouse, or the pad's R3), there is none, and nothing moves
+ *     when it stops or starts: the sway of that moment is folded into the
+ *     view angles as aiming begins, so the camera stays exactly where it
+ *     was, and the sway coming back is taken out of them as aiming ends,
+ *     so it picks up from where you are. ts2_steady_aim = 0 keeps it.
  *
  *   one key, two meanings (the toolkit's bindings filter): Escape is bound
  *     to Start, which pauses in a level, but in the front end Start
@@ -86,9 +89,6 @@ extern ptrdiff_t g_xbox_mem_offset;
 /* The field of view the turn rate is measured against: look multiplies by
  * fov / 60, and so does the mouse. */
 #define TS2_MOUSE_FOV       60.0f
-/* How much of the breathing sway goes or comes back each tick: all of it
- * in eight ticks, 0.13 s at the game's 60. */
-#define TS2_STEADY_STEP     0.125f
 
 static struct {
     unsigned frame;         /* presents seen */
@@ -100,8 +100,8 @@ static struct {
     volatile int held;      /* ts2_mouse_hold */
     int      invert;        /* ts2_mouse_invert */
     int      steady;        /* ts2_steady_aim */
-    float    sway;          /* how much of the breathing sway is let through */
-} M = { .sway = 1.0f };
+    uint32_t still;         /* the record whose sway is held at 0 (aiming) */
+} M;
 
 void ts2_mouse_hold(int on)
 {
@@ -282,19 +282,33 @@ void ts2_mouse_look(void (*look)(void))
         M.logged = M.frame;
         fprintf(stderr, "[TS2-MOUSE] frame %u: moved %.0f,%.0f  yaw %.1f pitch %.1f "
                         "(limit %.1f)  fov %.1f  flags 0x%X mode %u aiming %u  "
-                        "sway %.2f,%.2f x%.2f\n",
+                        "sway %.2f,%.2f%s\n",
                 M.frame, dx, dy, yaw, pitch, limit, fov, flags, mode,
                 M_MEM32(p + TS2_PM_AIMING), M_MEMF(p + TS2_PM_SWAY_YAW),
-                M_MEMF(p + TS2_PM_SWAY_PITCH), M.sway);
+                M_MEMF(p + TS2_PM_SWAY_PITCH), M.still ? " held" : "");
     }
 }
 
 /* ── breathing ───────────────────────────────────────────────── */
 
+/* Moves player 1's view angles by the sway, so yaw + sway (what the camera
+ * shows) is kept when the sway is taken away (sign 1) or given back (-1). */
+static void m_fold_sway(uint32_t p, float sign)
+{
+    float yaw = M_MEMF(p + TS2_PM_YAW) + sign * M_MEMF(p + TS2_PM_SWAY_YAW);
+
+    while (yaw < 0.0f)
+        yaw += 360.0f;
+    while (yaw >= 360.0f)
+        yaw -= 360.0f;
+    M_MEMF(p + TS2_PM_YAW) = yaw;
+    M_MEMF(p + TS2_PM_PITCH) = M_MEMF(p + TS2_PM_PITCH) + sign * M_MEMF(p + TS2_PM_SWAY_PITCH);
+}
+
 void ts2_mouse_breath(void (*breath)(void))
 {
     uint32_t p;
-    float target;
+    int still;
 
     breath();
     p = A->current_player ? M_MEM32(A->current_player) : 0;
@@ -302,14 +316,15 @@ void ts2_mouse_breath(void (*breath)(void))
         return;
 
     /* The sway is made afresh each tick from the phases, which run on, so
-     * scaling it here keeps nothing: it comes back in step. */
-    target = M_MEM32(p + TS2_PM_AIMING) ? 0.0f : 1.0f;
-    if (M.sway > target)
-        M.sway = M.sway - TS2_STEADY_STEP > target ? M.sway - TS2_STEADY_STEP : target;
-    else if (M.sway < target)
-        M.sway = M.sway + TS2_STEADY_STEP < target ? M.sway + TS2_STEADY_STEP : target;
-    if (M.sway < 1.0f) {
-        M_MEMF(p + TS2_PM_SWAY_YAW) = M_MEMF(p + TS2_PM_SWAY_YAW) * M.sway;
-        M_MEMF(p + TS2_PM_SWAY_PITCH) = M_MEMF(p + TS2_PM_SWAY_PITCH) * M.sway;
+     * there is nothing to undo: the camera adds whatever is here this tick. */
+    still = M_MEM32(p + TS2_PM_AIMING) != 0;
+    if (still && M.still != p)
+        m_fold_sway(p, 1.0f);           /* aiming: keep the view where it is */
+    else if (!still && M.still == p)
+        m_fold_sway(p, -1.0f);          /* not: the sway resumes from here */
+    M.still = still ? p : 0;            /* a new level's record starts afresh */
+    if (still) {
+        M_MEMF(p + TS2_PM_SWAY_YAW) = 0.0f;
+        M_MEMF(p + TS2_PM_SWAY_PITCH) = 0.0f;
     }
 }
