@@ -1,6 +1,6 @@
 """Make, build and check TimeSplitters 2 mods for RECOMP_MODS.
 
-A mod is a folder. The game (split2-recomp, PAL) reads loose files from it
+A mod is a folder. The game (split2-recomp) reads loose files from it
 at run time and stacks every mod in RECOMP_MODS (docs/modding.md):
 
   files/<path in a pak>                  that file in every pak that holds it,
@@ -9,7 +9,7 @@ at run time and stacks every mod in RECOMP_MODS (docs/modding.md):
   ts2/characters.ini                     characters the mod adds to the roster
   data/<pak>                             a whole pak, as on the disc (optional)
 
-So the source folder below is already a mod. Three commands:
+So the source folder below is already a mod. The commands:
 
   loose  copy a source to a mod folder as it is, with mod.json saying what is
          in it, and (given the disc's data folder) the disc textures its models
@@ -21,6 +21,8 @@ So the source folder below is already a mod. Three commands:
          other mods still apply on top).
   check  report what two or more mods both supply (and which one wins), their
          characters.ini claims, and texture ids picked by two mods.
+  guns   a mod, made from the disc, that puts every gun into every level (for
+         the debugging tools' "Give item"; docs/devtools.md).
 
 A level does not load its characters from chr.pak: every story and arcade
 level pak carries its own copies (byte-identical, textures under the same
@@ -49,6 +51,7 @@ laid out as RECOMP_MODS expects, and mod.json saying what went where.
   python3 tools/ts2mod.py loose <source> <mod> [--data game/data]
   python3 tools/ts2mod.py build <source> game/data <mod>
   python3 tools/ts2mod.py check <mod> [<mod> ...]
+  python3 tools/ts2mod.py guns game/data private/mods/allguns
   RECOMP_MODS=<mod>:<another mod> ./split2_recomp      (';' on Windows)
 
 At run time a name in files/ replaces a pak's copy only where that copy is
@@ -516,6 +519,52 @@ def cmd_check(args):
     return 1 if problems else 0
 
 
+def cmd_guns(args):
+    """A mod that puts every gun into every level: what gun.pak holds (each
+    gun's first- and third-person and promo models, the projectiles, the
+    ammunition models and their textures) and every gun's firing sound
+    (sfx/gun_*.xbs, which only the level paks carry), from the player's own
+    disc. A level's pak carries only the guns that level uses, and the game
+    looks for any other as a loose file on the disc, which is not there; with
+    this mod in RECOMP_MODS the debugging tools' "Give item" can give any of
+    them. Built from the disc on the player's machine: never commit or share
+    the output."""
+    paks = disc_paks(args.data)
+    gun = [rel for rel in paks if rel.lower() == "gun.pak"]
+    if not gun:
+        raise SystemExit("%s: no gun.pak" % args.data)
+    _, entries, _ = ts2pak.read_pak(file_bytes(paks[gun[0]]))
+    wanted = {e["name"].lower() for e in entries}
+    contents, spelled = {}, {}
+    for rel in sorted(paks):
+        data = file_bytes(paks[rel])
+        _, entries, _ = ts2pak.read_pak(data)
+        for e in entries:
+            n = e["name"].lower()
+            if n in wanted or (n.startswith("sfx/gun_") and n.endswith(".xbs")):
+                blob = data[e["position"]:e["position"] + e["length"]]
+                contents.setdefault(n, {}).setdefault(blob, []).append(rel)
+                spelled.setdefault(n, e["name"])
+    out = os.path.abspath(args.out)
+    written = size = 0
+    for n in sorted(contents):
+        if len(contents[n]) > 1:
+            # files/ would replace every pak's copy with one of them.
+            print("skipped %s: %d different copies on the disc (%s)" % (
+                spelled[n], len(contents[n]),
+                "; ".join(", ".join(w) for w in contents[n].values())), file=sys.stderr)
+            continue
+        blob = next(iter(contents[n]))
+        dest = os.path.join(out, "files", *spelled[n].split("/"))
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as f:
+            f.write(blob)
+        written += 1
+        size += len(blob)
+    write_manifest(out, {"made_by": "ts2mod.py guns"})
+    print("%s: %d files, %.1f MB (every gun, for every level)" % (out, written, size / 1048576.0))
+
+
 def cmd_where(args):
     """Which paks hold a file (or every file under a prefix)."""
     for rel, full in sorted(disc_paks(args.data).items()):
@@ -538,6 +587,9 @@ def main():
     p = sub.add_parser("check", help="what two or more mods both supply, in RECOMP_MODS order")
     p.add_argument("mods", nargs="+")
     p.set_defaults(fn=cmd_check)
+    p = sub.add_parser("guns", help="a mod with every gun's files, for every level")
+    p.add_argument("data"); p.add_argument("out")
+    p.set_defaults(fn=cmd_guns)
     p = sub.add_parser("where", help="list the paks that hold a file")
     p.add_argument("data"); p.add_argument("name")
     p.set_defaults(fn=cmd_where)

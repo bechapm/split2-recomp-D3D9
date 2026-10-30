@@ -41,6 +41,83 @@ void sub_0009F180(void) { ts2_front_end_scene(sub_0009F180_gen); }
 extern void sub_001A5040_gen(void);
 void sub_001A5040(void) { ts2_draw_world(sub_001A5040_gen, 0x004B2F60u); }
 
+/* sweep is sub_00121710(index, from, to, height, radius, out, 1, 0): it
+ * moves a character from `from` towards `to` and corrects `to` in place to
+ * where it may go. Every one of the player's movement modes (the handlers
+ * of sub_001463D0's switch on P+0x158) moves through it and copies `to`
+ * into the player's position. Wrapped for the debugging tools' noclip and
+ * teleport (src/ts2_devtools.c), which answer with their own position. */
+extern void sub_00121710_gen(void);
+void sub_00121710(void) { ts2_dev_sweep(sub_00121710_gen); }
+
+/* clock is sub_001ADF80, the main loop's frame clock (sub_00168E60 calls
+ * it): it sets the ticks the frame runs ([0x0034889C], from the vertical
+ * blanks since the last frame) and the time scale ([0x003488A4]) from the
+ * pause switch [0x0040BC58]. Wrapped for the debugging tools' game speed,
+ * which scales the count after it. */
+extern void sub_001ADF80_gen(void);
+void sub_001ADF80(void) { ts2_dev_clock(sub_001ADF80_gen); }
+
+/* ray is sub_00020160(room, start, delta, infinite, hit, normal, room_out,
+ * class_mask, first_hit, passed): the game's line-of-sight and bullet test,
+ * returning the object hit. Wrapped for the debugging tools' invisibility,
+ * which makes the enemies' sight rays miss the player (the call sites are
+ * in config/us/devtools.inc). */
+extern void sub_00020160_gen(void);
+void sub_00020160(void) { ts2_dev_ray(sub_00020160_gen); }
+
+/* look_at is sub_000E67F0(dst, eye xyz, forward xyz, up xyz), cdecl, all
+ * by value: the camera update sub_00035930 builds the view [ctx+0x208] with
+ * it at 0x00036D47 (found with RECOMP_WATCH_WRITE on the view matrix).
+ * Wrapped for the free camera, which hands it its own eye and forward at
+ * that one call (config/us/devtools.inc has the return address). */
+extern void sub_000E67F0_gen(void);
+void sub_000E67F0(void) { ts2_dev_look_at(sub_000E67F0_gen); }
+
+/* hud is sub_000C92F0, no arguments: it draws the whole in-game HUD (the
+ * health and armour arcs, ammunition, the radar, the crosshair, messages),
+ * entered only by the tail jump at 0x000DE8DF in the per-viewport draw
+ * sub_000DE610. The gun in hand, the pause menu and cutscenes are drawn
+ * elsewhere. Wrapped for the debugging tools' HUD switch, which skips it. */
+extern void sub_000C92F0_gen(void);
+void sub_000C92F0(void) { ts2_dev_hud(sub_000C92F0_gen); }
+
+/* The enemies' awareness: a 12-byte record per pair of character indices
+ * at [0x35821C] (state at +0, 0 unaware). sub_0005F2A0(a, b, state) is its
+ * only writer (both directions; a player made known alerts the AI, R+0x128C
+ * |= 0x10000), called from the sight routines sub_00080590 (story) and
+ * sub_0006B450 (arcade) and the player's own entry sub_00147A10;
+ * sub_0005F430(a, b) reads it (9 callers, the damage reaction among them);
+ * sub_0005F4F0(R, refresh) is an enemy's check that its target R+0x1300 is
+ * still one (46 callers; 0 for none). Wrapped for the debugging tools'
+ * invisibility: the sight rays alone did not stop guards, because
+ * awareness, once set, is kept with no ray at all. */
+extern void sub_0005F2A0_gen(void);
+void sub_0005F2A0(void) { ts2_dev_aware_set(sub_0005F2A0_gen); }
+extern void sub_0005F430_gen(void);
+void sub_0005F430(void) { ts2_dev_aware_get(sub_0005F430_gen); }
+extern void sub_0005F4F0_gen(void);
+void sub_0005F4F0(void) { ts2_dev_target_check(sub_0005F4F0_gen); }
+
+/* load is sub_0012C820(path), the model loader the object spawns
+ * (sub_0014BA20, sub_00152700) call on a model's first use: the resident
+ * resources (sub_001495C0), else the file read by name through the mounted
+ * paks. It binds no textures; the level-load code does that for the
+ * level's resident models only. A gun the debugging tools gave from another
+ * level's data was loaded here and drew untextured. Wrapped so the tools
+ * bind such a model's textures (src/ts2_devtools.c, config/us/devtools.inc). */
+extern void sub_0012C820_gen(void);
+void sub_0012C820(void) { ts2_dev_model_load(sub_0012C820_gen); }
+/* sub_00086970(path, 1, 0) is that loader's fallback when the file is not
+ * held whole in a mounted pak's memory (a mod's file is not): it allocates
+ * a buffer (sub_000E9D60), reads the file into it through the pak read
+ * sub_00086450 and returns it; the model is inside it (list = buf+[buf],
+ * M = buf+[buf+4]). Not PAL's sub_00086970, which is the overlapped read's
+ * poll (USA sub_00086910). Wrapped so the tools know the data of a model
+ * they bind (code; measured). */
+extern void sub_00086970_gen(void);
+void sub_00086970(void) { ts2_dev_file_read(sub_00086970_gen); }
+
 /* present is sub_001CC100 (PAL 0x001CC530): the only function in the game's
  * code that calls D3DDevice_Swap. */
 extern void sub_001CC100_gen(void);
@@ -229,8 +306,28 @@ const Ts2UiPlace k_ts2_ui_places[] = {
  * alone (roster 0). PAL's are in config/pal/overrides.inc. */
 const Ts2Roster k_ts2_roster = { 0 };
 
-/* Loose mod files inside the paks: the pak table and its readers have not
- * been found in this release yet (table 0), so files/ and paks/ in a mod are
- * not served; whole data/*.pak files in a mod still are (the toolkit's
- * RECOMP_MODS). PAL's are in config/pal/overrides.inc. */
-const Ts2Paks k_ts2_paks = { 0 };
+/* Loose mod files inside the paks (ts2_paks_* in recomp_manual.c, which
+ * says how the game finds a file). In this stretch the USA code is PAL's
+ * moved by -0x60 and its data by -0x440 (code, each one checked): the
+ * mount sub_00085D50 (PAL 0x00085DB0; it compares the count [0x3585D8]
+ * with 25 and indexes the records with shl 5, add 0x3585F8), the read
+ * sub_00086450 (PAL 0x000864B0), the overlapped read sub_00086820 (PAL
+ * 0x00086880; it fills the overlapped block at 0x3585DC and sets the
+ * pending flag 0x358948), whose poll is sub_00086910 (PAL 0x00086970), and
+ * the lookups sub_000862A0 (P4CK, PAL 0x00086300) and sub_00086040 (P8CK,
+ * PAL 0x000860A0), which leave the record they found the file in at
+ * 0x3585F0. (USA's own sub_00086970 is another function: the loose-file
+ * read on the disc that a model the paks lack falls back to.) */
+extern void sub_000862A0(void);
+extern void sub_00086040(void);
+const Ts2Paks k_ts2_paks = {
+    0x003585F8, 0x003585D8, 25,   /* the table, its count, its size */
+    0x003585F0, 0x00358948,       /* the last lookup's record; a read pending */
+    sub_000862A0, sub_00086040,
+};
+extern void sub_00085D50_gen(void);
+void sub_00085D50(void) { ts2_paks_mount(sub_00085D50_gen); }
+extern void sub_00086450_gen(void);
+void sub_00086450(void) { ts2_paks_read(sub_00086450_gen); }
+extern void sub_00086820_gen(void);
+void sub_00086820(void) { ts2_paks_read_async(sub_00086820_gen); }
