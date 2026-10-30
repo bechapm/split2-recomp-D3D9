@@ -40,9 +40,10 @@
  *     bound to the D-pad's left and right (previous and next weapon), is
  *     its up and down (zoom in and out) while zoomed in through a scope, as
  *     the game's Default controls have the D-pad. Aiming with no scope (or
- *     an item with no crosshair) leaves the wheel changing weapon, and
- *     changing weapon then ends aim mode, so the next gun does not come up
- *     already aimed (straight into a scope).
+ *     an item with no crosshair) leaves the wheel changing weapon.
+ *
+ *   changing weapon ends aim mode, from the wheel, the keys or the pad, so
+ *     the next gun does not come up already aimed (straight into a scope).
  *
  * The keys themselves are config/input_defaults.json, the title's own layout
  * (recomp_title_input in CMakeLists.txt).
@@ -108,8 +109,7 @@ static struct {
     int      invert;        /* ts2_mouse_invert */
     int      steady;        /* ts2_steady_aim */
     uint32_t still;         /* the record whose sway is held at 0 (aiming) */
-    volatile unsigned unaim;    /* a weapon change began aimed: the present it did, or 0 */
-    volatile int unaim_seen;    /* and the game has started changing weapon */
+    volatile unsigned unaim;    /* a weapon change asked for aimed: the present, or 0 */
     volatile WORD key_buttons;  /* RECOMP_TS2_MOUSE_SEQ's keys, as the keyboard */
     volatile unsigned key_until;
 } M;
@@ -191,37 +191,14 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *from_
         }
         return;
     }
-    /* Changing weapon aimed: aim mode is a toggle by default and the game
-     * carries it over -- it drops aiming while it changes (flags 0x10) and
-     * puts it back on the new weapon, so the sniper rifle came up looking
-     * down its scope. So a change asked for while aiming (the D-pad's left
-     * or right, from the pad or the keys) is followed: once the game has
-     * changed weapon, aim mode's own button (R3) is pressed until aiming
-     * ends, which un-toggles it. With the hold setting the button is down
-     * already, and the aim stays. Given up if no change starts in half a
-     * second (nothing else to change to). */
+    /* Changing weapon aimed: noted here, where the request is seen, and
+     * acted on in the game's own update (m_unaim_tick). Not when the wheel
+     * or keys are zooming a scope. */
     p = m_player1();
-    if (p) {
-        uint32_t flags = M_MEM32(p + TS2_PM_FLAGS);
-        int aiming = M_MEM32(p + TS2_PM_AIMING) != 0;
-
-        if (!M.unaim) {
-            if (aiming && (pad->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT)) &&
-                !(m_scoped(p) && (kbm->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT)))) {
-                M.unaim = M.frame ? M.frame : 1;
-                M.unaim_seen = 0;
-            }
-        } else if (flags & TS2_PF_CHANGING) {
-            M.unaim_seen = 1;
-        } else if (M.unaim_seen) {
-            if (aiming)
-                pad->wButtons |= XBOX_GAMEPAD_RIGHT_THUMB;
-            else
-                M.unaim = 0;
-        } else if (M.frame - M.unaim > 30u) {
-            M.unaim = 0;
-        }
-    }
+    if (p && !M.unaim && M_MEM32(p + TS2_PM_AIMING) &&
+        (pad->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT)) &&
+        !(m_scoped(p) && (kbm->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT))))
+        M.unaim = M.frame ? M.frame : 1;
 
     /* Looking through a scope: the wheel (the D-pad's left and right, from
      * the mouse or the keyboard) zooms, as the D-pad's up and down do.
@@ -383,6 +360,34 @@ void ts2_mouse_look(void (*look)(void))
     }
 }
 
+/* ── changing weapon ─────────────────────────────────────────── */
+
+/* Aim mode is a toggle by default and the game carries it over a weapon
+ * change: aiming (+0x884) is worked out each tick as flags bit 1 (the aim
+ * toggle, or the button held with the hold setting) outside modes 4, 7 and
+ * 14, so it reads 0 while the weapon changes and comes back on the new one
+ * -- the sniper rifle came up looking down its scope. Pressing aim mode's
+ * button after the change landed too late (two frames of scope, then the
+ * zoom out); before it, during the change, it is unclear what a press does.
+ * So once the change asked for has started (flags 0x10), the toggle bit
+ * itself is cleared, and the new weapon comes up at the hip. With the hold
+ * setting the game sets it again from the button still held. Given up if no
+ * change starts in half a second (nothing else to change to). */
+static void m_unaim_tick(uint32_t p)
+{
+    uint32_t flags;
+
+    if (!M.unaim || p != m_player1())
+        return;
+    flags = M_MEM32(p + TS2_PM_FLAGS);
+    if (flags & TS2_PF_CHANGING) {
+        M_MEM32(p + TS2_PM_FLAGS) = flags & ~(uint32_t)TS2_PF_AIM;
+        M.unaim = 0;
+    } else if (M.frame - M.unaim > 30u) {
+        M.unaim = 0;
+    }
+}
+
 /* ── breathing ───────────────────────────────────────────────── */
 
 /* Moves player 1's view angles by a sway, so yaw + sway (what the camera
@@ -414,6 +419,8 @@ void ts2_mouse_breath(void (*breath)(void))
         shown_pitch = M_MEMF(p + TS2_PM_SWAY_PITCH);
     }
     breath();
+    if (p)
+        m_unaim_tick(p);
     if (!M.steady || !p || p != m_player1())
         return;
 
