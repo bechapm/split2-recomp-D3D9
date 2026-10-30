@@ -631,6 +631,9 @@ extern void xbox_D3D8SetInterpRegisters(int projection, int affine_first, int af
 /* The mouse and keyboard (keys, the mouse turning the player): src/ts2_mouse.c. */
 #include "ts2_mouse.h"
 
+/* The debugging tools (keys, cheats, free camera): src/ts2_devtools.c. */
+#include "ts2_devtools.h"
+
 static void ts2_present(void (*present)(void))
 {
     static int interp_said;
@@ -640,6 +643,7 @@ static void ts2_present(void (*present)(void))
         xbox_D3D8SetInterpRegisters(60, 64, 12);
     }
     present();
+    ts2_dev_frame();                       /* src/ts2_devtools.c */
     xbox_D3D8SetWideFrames(ts2_menus_wide() ||
                            (g_ts2_frame_camera && !g_ts2_frame_front_end));
     g_ts2_world_live = g_ts2_frame_world;  /* see ts2_draw_world */

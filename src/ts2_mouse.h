@@ -34,7 +34,7 @@ enum {
     TS2_PM_MODE     = 0x158,  /* 6, 8 (a mounted gun) and 9: look does not turn P */
     TS2_PM_AIMING   = 0x884,  /* non-zero in aim mode */
     TS2_PM_HELD     = 0x998,  /* non-zero: look does nothing at all */
-    TS2_CTX_EYE     = 0x27C,  /* the camera context: the eye the camera was made from */
+    TS2_MOUSE_CTX_EYE = 0x27C, /* the camera context: the eye the camera was made from (TS2_CTX_EYE in ts2_devtools.h) */
 };
 
 /* TS2_PM_FLAGS bits. */

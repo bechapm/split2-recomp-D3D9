@@ -7,8 +7,9 @@ file formats are in `docs/formats/` (`xbr.md` models, `xbt.md` textures,
 [blender-guide.md](blender-guide.md)**, a step-by-step guide to making a
 character in Blender and playing as it.
 
-PAL only so far. macOS is tested; Windows has not been built with these
-changes yet.
+PAL only so far, apart from loose files (`files/`, `paks/`), which the USA
+release serves too (Oct 2026; its characters.ini is not read yet). macOS is
+tested; Windows has not been built with these changes yet.
 
 ## How a mod reaches the game
 
@@ -36,7 +37,7 @@ front end's pak; `files/textures/0267.xbt` a texture everywhere it is used.
 Every story and arcade level pak carries its own copy of the characters in
 it, which is why `files/` exists: one file reaches all of them.
 
-**Mods stack.** The game serves these files while it runs (PAL;
+**Mods stack.** The game serves these files while it runs (PAL and USA;
 `ts2_paks_*` in `src/recomp_manual.c`): as it opens a pak it puts each mod's
 files into that pak's directory, with their own sizes, and reads them from
 the mod. For one name in one pak the first mod in `RECOMP_MODS` that has it

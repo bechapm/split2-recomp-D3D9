@@ -143,7 +143,7 @@ static int m_camera_is_eye(uint32_t p)
     if (!m_ptr_ok(ctx))
         return 1;                       /* nothing to tell by */
     for (i = 0; i < 3; i++) {
-        e = M_MEMF(ctx + TS2_CTX_EYE + 4u * (uint32_t)i) -
+        e = M_MEMF(ctx + TS2_MOUSE_CTX_EYE + 4u * (uint32_t)i) -
             M_MEMF(p + TS2_PM_EYE + 4u * (uint32_t)i);
         d += e * e;
     }
