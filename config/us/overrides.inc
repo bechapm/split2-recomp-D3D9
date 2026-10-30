@@ -99,19 +99,15 @@ void sub_0005F430(void) { ts2_dev_aware_get(sub_0005F430_gen); }
 extern void sub_0005F4F0_gen(void);
 void sub_0005F4F0(void) { ts2_dev_target_check(sub_0005F4F0_gen); }
 
-/* A model's textures are requested, not loaded: its texture walk
- * (sub_0012C6A0; also sub_0012C750 and sub_0001D4B0) calls sub_00149CA0(id,
- * a, b), which appends a request to 0x3AB580 (count [0x3AB578]) and links it
- * into a list by id ([0x3A73D0]). Only the level-load pass sub_00149D20
- * (called once, from the main loop's level-load step at 0x00168F02) loads
- * them, through sub_001B7E60. A model first used mid-level is one the
- * level's pak did not carry -- a gun the debugging tools gave from another
- * level's data -- and drew untextured until the next level. Wrapped so the
- * tools load such a texture at once (src/ts2_devtools.c). */
-extern void sub_00149CA0_gen(void);
-void sub_00149CA0(void) { ts2_dev_texture_request(sub_00149CA0_gen); }
-extern void sub_00149D20_gen(void);
-void sub_00149D20(void) { ts2_dev_level_load(sub_00149D20_gen); }
+/* load is sub_0012C820(path), the model loader the object spawns
+ * (sub_0014BA20, sub_00152700) call on a model's first use: the resident
+ * resources (sub_001495C0), else the file read by name through the mounted
+ * paks. It binds no textures; the level-load code does that for the
+ * level's resident models only. A gun the debugging tools gave from another
+ * level's data was loaded here and drew untextured. Wrapped so the tools
+ * bind such a model's textures (src/ts2_devtools.c, config/us/devtools.inc). */
+extern void sub_0012C820_gen(void);
+void sub_0012C820(void) { ts2_dev_model_load(sub_0012C820_gen); }
 
 /* present is sub_001CC100 (PAL 0x001CC530): the only function in the game's
  * code that calls D3DDevice_Swap. */

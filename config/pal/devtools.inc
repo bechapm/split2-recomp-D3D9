@@ -26,5 +26,5 @@ static const Ts2DevAddrs k_ts2_dev = {
     0, 0,               /* room by position, player count */
     0, 0, 0, 0, 0, 0,   /* items' models */
     0, 0, 0, 0,         /* their lookups */
-    0,                  /* texture load */
+    0, 0, 0, 0, 0,      /* binding a model's textures */
 };

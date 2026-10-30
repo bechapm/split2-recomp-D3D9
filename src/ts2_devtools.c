@@ -818,34 +818,90 @@ void ts2_dev_target_check(void (*check)(void))
     check();
 }
 
-/* level_load() is the level-load pass that loads every requested texture;
- * request(id, a, b) only queues one for it. Outside the pass, while a level
- * plays and the tools are on, a request is also loaded at once: the
- * texture is returned as it is when it is loaded already, so only a model
- * the level did not carry (a gun given from another level's data) loads
- * anything. */
-static int g_dev_level_loading;
+/* Binding writes each material's texture slot over its id, in the model's
+ * own data, which stays in memory with the pak: a level restarted loads the
+ * same copy again, ids already replaced. So the ids are kept here the first
+ * time a record is bound and put back before it is bound again. */
+static struct { uint32_t rec, id; } g_dev_mat[2048];
+static int g_dev_mat_n;
+static uint32_t g_dev_prepared[256];    /* material lists already prepared */
+static int g_dev_prepared_n;
+static uint32_t g_dev_mat_level = 0xFFFFFFFFu;
 
-void ts2_dev_level_load(void (*load)(void))
+/* Another level's paks are other memory: what was kept is forgotten when a
+ * different level starts (a restart of the same one keeps its paks). */
+static void dev_bind_level(uint32_t level)
 {
-    g_dev_level_loading++;
-    load();
-    g_dev_level_loading--;
+    if (level != g_dev_mat_level) {
+        g_dev_mat_level = level;
+        g_dev_mat_n = 0;
+        g_dev_prepared_n = 0;
+    }
 }
 
-void ts2_dev_texture_request(void (*request)(void))
+static void dev_bind_textures(uint32_t path, uint32_t m)
 {
-    uint32_t args[3];
+    uint32_t list = DEV_MEM32(m + A->model_materials), data, args[3], rec, id;
+    int i, k, prepared = 0;
 
-    if (!D.keys || !A->texture_load || g_dev_level_loading || !dev_in_level()) {
-        request();
+    if (!dev_ptr_ok(list))
+        return;
+    data = dev_guest_call(A->pak_data, dev_scratch(0), &path, 1);
+    if (!dev_ptr_ok(data)) {
+        fprintf(stderr, "[TS2-DEV] a model loaded mid-level is in no pak read into memory; "
+                "its textures are not bound\n");
         return;
     }
-    args[0] = DEV_MEM32(g_esp + 4);
-    args[1] = DEV_MEM32(g_esp + 8);
-    args[2] = DEV_MEM32(g_esp + 12);
-    request();                          /* the game's queue, as ever */
-    dev_guest_call(A->texture_load, dev_scratch(0), args, 3);
+    for (i = 0; i < g_dev_prepared_n; i++)
+        prepared |= g_dev_prepared[i] == list;
+    if (!prepared) {
+        args[0] = list;
+        args[1] = data;
+        dev_guest_call(A->material_prepare, dev_scratch(0), args, 2);
+        if (g_dev_prepared_n < (int)(sizeof g_dev_prepared / sizeof g_dev_prepared[0]))
+            g_dev_prepared[g_dev_prepared_n++] = list;
+    }
+    list = DEV_MEM32(m + A->model_materials);
+    for (rec = list, i = 0; dev_ptr_ok(rec) && i < 512; rec += 0x10, i++) {
+        id = DEV_MEM32(rec);
+        for (k = 0; k < g_dev_mat_n && g_dev_mat[k].rec != rec; k++)
+            ;
+        if (k < g_dev_mat_n) {
+            id = g_dev_mat[k].id;
+            DEV_MEM32(rec) = id;
+        } else if (id != 0xFFFFFFFFu && g_dev_mat_n < (int)(sizeof g_dev_mat / sizeof g_dev_mat[0])) {
+            g_dev_mat[g_dev_mat_n].rec = rec;
+            g_dev_mat[g_dev_mat_n].id = id;
+            g_dev_mat_n++;
+        }
+        if (id == 0xFFFFFFFFu)
+            break;
+        if (id == 0x40000000u)
+            continue;
+        args[0] = id;
+        args[1] = rec;
+        args[2] = rec;
+        dev_guest_call(DEV_MEM32(rec + 0xC) & 0x10000000u ? A->texture_load_alt : A->texture_load,
+                       dev_scratch(0), args, 3);
+    }
+}
+
+/* load(path) returns the model. One the resident resources do not hold was
+ * not bound at level load: while a level plays, with the tools on, its
+ * textures are bound here. */
+void ts2_dev_model_load(void (*load)(void))
+{
+    uint32_t path = DEV_MEM32(g_esp + 4), m;
+
+    load();
+    m = g_eax;
+    if (!D.keys || !A->texture_load || !A->material_prepare || !A->pak_data ||
+        !dev_ptr_ok(m) || !dev_ptr_ok(path) || !dev_in_level())
+        return;
+    if (A->resident_find && dev_guest_call(A->resident_find, dev_scratch(0), &path, 1))
+        return;
+    dev_bind_level(DEV_MEM32(A->level_id));
+    dev_bind_textures(path, m);
 }
 
 /* look_at(dst, eye x y z, forward x y z, up x y z), all by value: at the

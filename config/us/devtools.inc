@@ -22,8 +22,11 @@ extern void sub_0011FF10(void);
 extern void sub_001495C0(void);
 extern void sub_000862A0(void);
 extern void sub_00086040(void);
-/* texture_load sub_001B7E60, below. */
+/* pak_data, material_prepare, texture_load and texture_load_alt, below. */
+extern void sub_00086360(void);
+extern void sub_00129460(void);
 extern void sub_001B7E60(void);
+extern void sub_001B7F70(void);
 
 static const Ts2DevAddrs k_ts2_dev = {
     /* player_base: [0x00497028] is the local player records, 0xD3C each;
@@ -132,10 +135,17 @@ static const Ts2DevAddrs k_ts2_dev = {
     0x002D89C4,
     sub_001495C0,
     sub_000862A0, sub_00086040, 0x003585F0,
-    /* texture_load: sub_001B7E60(id, a, b) returns the texture when its id
-     * is in the loaded table [0x348A2C] (0x34 each, id at +0x1C), else loads
-     * textures/<id>.xbt (the format at 0x29EF8C). The level-load pass
-     * sub_00149D20 calls it for each queued request, and so do run-time
-     * callers (sub_0012C7C0, sub_000F8F70, sub_000F91D0) (code). */
-    sub_001B7E60,
+    /* The model loader sub_0012C820(path) relocates a model and keeps its
+     * material list at M+0xC but binds no textures: the requests
+     * (sub_00149CA0) come only from level-load code, and the level-load pass
+     * sub_00149D20 loads them. A model loaded mid-level that the level's
+     * resident data lacks kept its raw texture ids (rocketlauncher_ph
+     * 0x5BB-0x5C1, read as slots out of range of the loaded table
+     * [0x348A2C], capacity 0x400) and drew untextured (measured). The
+     * run-time binder sub_0012C7C0 does: data = sub_00086360(path) (the
+     * file's data in a pak read into memory), sub_00129460([M+0xC], data),
+     * then for each record sub_001B7E60(id, rec, rec), or sub_001B7F70 when
+     * rec+0xC has 0x10000000, skipping id 0x40000000; each writes the
+     * texture's slot over the id (code; measured). */
+    sub_00086360, sub_00129460, sub_001B7E60, sub_001B7F70, 0x0C,
 };

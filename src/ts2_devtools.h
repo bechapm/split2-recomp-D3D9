@@ -72,10 +72,19 @@ typedef struct Ts2DevAddrs {
     void (*pak_find_p4)(void);
     void (*pak_find_p8)(void);
     uint32_t pak_current;
-    /* texture_load(id, a, b), cdecl: the texture with that id, loaded now if
-     * it is not yet (the level-load pass's call, which run-time code makes
-     * too). */
+    /* A model loaded mid-level from a file the level did not carry gets no
+     * textures: the game binds a model's textures (each material's id
+     * replaced by its slot in the loaded textures) only for models in the
+     * level's resident data, at level load. These bind them as the game's
+     * own run-time binder does: pak_data(path) the file's data, cdecl;
+     * material_prepare(list, data); then for each material record (0x10
+     * bytes, id first, flags at +0xC, until an id of -1) texture_load(id,
+     * rec, rec), or texture_load_alt(...) when the flags have 0x10000000. */
+    void (*pak_data)(void);
+    void (*material_prepare)(void);
     void (*texture_load)(void);
+    void (*texture_load_alt)(void);
+    uint32_t model_materials; /* a loaded model: its material list */
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the
@@ -143,12 +152,9 @@ void ts2_dev_aware_set(void (*set)(void));
 void ts2_dev_aware_get(void (*get)(void));
 void ts2_dev_target_check(void (*check)(void));
 
-/* A model's texture request (wraps the release's request(id, a, b), which
- * only queues the texture for the level-load pass): while a level is
- * playing, outside that pass (wrapped too, as level_load), the texture is
- * loaded at once, so a gun first drawn mid-level -- one the tools gave from
- * another level's data -- has its textures. */
-void ts2_dev_texture_request(void (*request)(void));
-void ts2_dev_level_load(void (*load)(void));
+/* The model loader (wraps the release's load(path), which returns the
+ * model): a model that is not in the level's resident data -- a gun the
+ * tools gave from another level's data -- has its textures bound. */
+void ts2_dev_model_load(void (*load)(void));
 
 #endif
