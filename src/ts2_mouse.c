@@ -40,7 +40,9 @@
  *     bound to the D-pad's left and right (previous and next weapon), is
  *     its up and down (zoom in and out) while zoomed in through a scope, as
  *     the game's Default controls have the D-pad. Aiming with no scope (or
- *     an item with no crosshair) leaves the wheel changing weapon.
+ *     an item with no crosshair) leaves the wheel changing weapon, and
+ *     changing weapon then ends aim mode, so the next gun does not come up
+ *     already aimed (straight into a scope).
  *
  * The keys themselves are config/input_defaults.json, the title's own layout
  * (recomp_title_input in CMakeLists.txt).
@@ -181,6 +183,17 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
      * crosshair at all (the temporal uplink), zooms nothing, and the wheel
      * would stop changing weapon with nothing on screen to say why. */
     p = m_player1();
+    if (p && M_MEM32(p + TS2_PM_AIMING) && !m_scoped(p) &&
+        (pad->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT))) {
+        /* Changing weapon while aiming without a scope: aim mode is a
+         * toggle by default and the game carries it over, so the next gun
+         * -- a sniper rifle -- would come up looking down its scope. Aim
+         * mode's own button goes with the change, once: aiming ends when
+         * the game takes it, and so does the press. Held aim (the hold
+         * setting) has it down already, which changes nothing. */
+        pad->wButtons |= XBOX_GAMEPAD_RIGHT_THUMB;
+        return;
+    }
     if (p && m_scoped(p)) {
         if (kbm->wButtons & XBOX_GAMEPAD_DPAD_LEFT) {
             pad->wButtons &= (WORD)~XBOX_GAMEPAD_DPAD_LEFT;
