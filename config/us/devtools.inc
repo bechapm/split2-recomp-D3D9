@@ -32,6 +32,10 @@ extern void sub_00149790(void);
 extern void sub_001B7D80(void);
 extern void sub_000A9BA0(void);
 
+/* cloak_on, cloak_off, below. */
+extern void sub_000459C0(void);
+extern void sub_00045A10(void);
+
 static const Ts2DevAddrs k_ts2_dev = {
     /* player_base: [0x00497028] is the local player records, 0xD3C each;
      * player 1 is the first (code: P = base + sub_00121930(i) * 0xD3C;
@@ -174,4 +178,11 @@ static const Ts2DevAddrs k_ts2_dev = {
      * plasma 11 -> 45, 67, 68; homing 14 -> 47; rockets 13 -> 46, 75). The
      * count is only a bound on what is read. */
     0x002C167C, 0xD0, 32,
+    /* cloak_on, cloak_off: the game's cloak, on the status block at R+0x1498.
+     * The yellow orb of arcade matches is sub_00047A20 (from the power-up
+     * pickup sub_0013D850, type 0): bit 0x10 of block+4, and 30 seconds in
+     * block+0x28. sub_000459C0 is the same with no time limit, which is how
+     * the AI cloaks itself (sub_00074980, sub_00075160, sub_000814B0), and
+     * sub_00045A10 fades it out (code). */
+    sub_000459C0, sub_00045A10,
 };

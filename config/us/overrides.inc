@@ -99,6 +99,16 @@ void sub_0005F430(void) { ts2_dev_aware_get(sub_0005F430_gen); }
 extern void sub_0005F4F0_gen(void);
 void sub_0005F4F0(void) { ts2_dev_target_check(sub_0005F4F0_gen); }
 
+/* What a security camera, a wall gun or any other remote sees: sub_0015DA10
+ * (the remote in esi, the character as its argument; 8 callers, all in the
+ * remotes' behaviours sub_00160016 and sub_00162730, which raise the alarm
+ * through sub_00084890) answers whether it can see that character, within
+ * its range and arcs and by the game's ray. None of the enemies' awareness
+ * is involved, and the game's cloak is not asked. Wrapped so the debugging
+ * tools' invisibility covers it. */
+extern void sub_0015DA10_gen(void);
+void sub_0015DA10(void) { ts2_dev_remote_sees(sub_0015DA10_gen); }
+
 /* load is sub_0012C820(path), the model loader the object spawns
  * (sub_0014BA20, sub_00152700) call on a model's first use: the resident
  * resources (sub_001495C0), else the file read by name through the mounted

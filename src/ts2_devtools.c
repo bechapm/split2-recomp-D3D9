@@ -22,7 +22,7 @@
  *   ts2_god = 1            RECOMP_TS2_GOD          god mode from the start
  *   ts2_infinite_ammo = 1  RECOMP_TS2_INFINITE_AMMO
  *   ts2_unlock_all = 1     RECOMP_TS2_UNLOCK_ALL   every character, level and cheat
- *   ts2_invisible = 1      RECOMP_TS2_INVISIBLE    enemies cannot see the player
+ *   ts2_invisible = 1      RECOMP_TS2_INVISIBLE    enemies and cameras cannot see the player
  *   ts2_readout = 1        RECOMP_TS2_READOUT      the readout from the start: the
  *                          position, what the middle of the view is on (the
  *                          game's own ray: point, distance, room, door,
@@ -83,7 +83,11 @@
  *     they reach the player. And because awareness, once set, is kept with
  *     no ray at all, the game's awareness of the players is held at
  *     "unaware" (written and read), and an enemy whose target is the player
- *     loses it. Security cameras, alarms and sensors are not covered yet.
+ *     loses it. A security camera or wall gun answers for itself
+ *     (sub_0015DA10, wrapped): no, for the player. The game's own cloak goes
+ *     on with no time limit, as the AI cloaks itself: it is what bots' target
+ *     scans skip, and what shows, but story enemies and cameras never read it.
+ *     An alarm a level's script raises by itself is not covered.
  *   free camera: the eye and direction the camera update hands its
  *     look-at, replaced at that one call, and the room drawing starts from
  *     found by the portal walk, so the view, everything made from it and
@@ -167,6 +171,7 @@ static struct {
     int  god_written, ammo_written, unlock_written;
     int  frozen, step, freecam, noclip, invisible;
     int  hud_off;                       /* the game's HUD not drawn */
+    int  cloaked;                       /* the tools turned the game's cloak on */
     int  item;                          /* what "Give item" gives */
     int  god_hold;                      /* frames god stays on after noclip */
     int  speed;                         /* index in k_dev_speeds */
@@ -795,6 +800,21 @@ void ts2_dev_aware_get(void (*get)(void))
 /* check(R, refresh): whether an enemy's target R+0x1300 is still one. Under
  * invisibility an enemy whose target is the player has none, and the game's
  * own check then says so. */
+/* sees(chr) answers for a security camera or wall gun: under invisibility,
+ * no for the player, as the game's own debug switch [0x356894] answers for
+ * everyone. It pops its return address as its own ret would. */
+void ts2_dev_remote_sees(void (*sees)(void))
+{
+    uint32_t c = D.invisible ? dev_chr(dev_player()) : 0;
+
+    if (c && DEV_MEM32(g_esp + 4) == c) {
+        g_eax = 0;
+        g_esp += 4;
+        return;
+    }
+    sees();
+}
+
 void ts2_dev_target_check(void (*check)(void))
 {
     uint32_t r = DEV_MEM32(g_esp + 4), c;
@@ -1171,6 +1191,28 @@ static void dev_give(uint32_t p)
 
 /* ── once a frame ──────────────────────────────────────────── */
 
+/* The game's own cloak follows invisibility: on while it is, back on if a
+ * respawn or a new level cleared it, and off once with it. */
+static void dev_cloak(void)
+{
+    uint32_t r = dev_record(dev_player()), on;
+
+    if (!A->cloak_on || !r || !dev_in_level())
+        return;
+    on = DEV_MEM32(r + TS2_R_STATUS + 4) & TS2_STATUS_CLOAK;
+    if (D.invisible && !on) {
+        uint32_t status = r + TS2_R_STATUS;
+
+        dev_guest_call(A->cloak_on, dev_scratch(0), &status, 1);
+        D.cloaked = 1;
+    } else if (!D.invisible && on && D.cloaked) {
+        uint32_t status = r + TS2_R_STATUS;
+
+        dev_guest_call(A->cloak_off, dev_scratch(0), &status, 1);
+        D.cloaked = 0;
+    }
+}
+
 /* What a row of the menu (or a step of ts2_dev_seq) does. */
 enum {
     ACT_READOUT, ACT_GOD, ACT_AMMO, ACT_UNLOCK, ACT_SAVE, ACT_LOAD,
@@ -1305,6 +1347,7 @@ static void dev_action(int act, uint32_t p)
         break;
     case ACT_INVISIBLE:
         D.invisible = !D.invisible;
+        dev_cloak();
         dev_say(A->sight_returns[0] ? "invisible to enemies %s" : "invisible: not found",
                 D.invisible ? "ON" : "off");
         break;
@@ -1734,6 +1777,7 @@ void ts2_dev_frame(void)
         dev_say("teleported (ts2_teleport)");
     }
 
+    dev_cloak();
     dev_write_switches();
     dev_write_clock();
     if (D.freecam && !D.menu)

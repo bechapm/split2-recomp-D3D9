@@ -51,7 +51,7 @@ per line, or set the environment variable beside it:
 | `ts2_dev = 0` | `RECOMP_TS2_DEV` | No menu (it is on by default) |
 | `ts2_god = 1` | `RECOMP_TS2_GOD` | God mode from the start |
 | `ts2_infinite_ammo = 1` | `RECOMP_TS2_INFINITE_AMMO` | Infinite ammo from the start |
-| `ts2_invisible = 1` | `RECOMP_TS2_INVISIBLE` | Enemies cannot see you |
+| `ts2_invisible = 1` | `RECOMP_TS2_INVISIBLE` | Enemies, security cameras and wall guns cannot see you |
 | `ts2_unlock_all = 1` | `RECOMP_TS2_UNLOCK_ALL` | Every character, level and cheat |
 | `ts2_readout = 1` | `RECOMP_TS2_READOUT` | The readout from the start |
 | `ts2_speed = 0.5` | `RECOMP_TS2_SPEED` | The game's speed: 0.25, 0.5, 1, 2 or 4 |
@@ -144,9 +144,13 @@ how it was found.
   sites in the AI) reach nothing when they reach you. That alone did not
   stop guards, because once an enemy knows about you it keeps knowing with
   no ray at all, so the game's record of who knows about whom is held at
-  "unaware" for you, and an enemy whose target is you loses it. Bullets are
-  untouched. Not yet covered: security cameras, alarms and sensors, and enemies that
-  hear gunfire.
+  "unaware" for you, and an enemy whose target is you loses it. Security
+  cameras and wall guns ("remotes") have their own eyes, one function, which
+  now answers no for you, so they raise no alarm. You also wear the game's own
+  cloak, the yellow orb of arcade matches, with no time limit, and see your
+  gun as glass. The cloak alone would not do: bots' target scans skip a cloaked character, but story enemies and
+  cameras never look at it. Bullets are untouched. Not covered: alarms a
+  level's script raises by itself, and enemies that hear gunfire.
 - **Noclip and teleport** answer the character sweep, the one function every
   one of the player's movement modes moves through, with the tool's
   position, so the game builds your eye, your character and the rest from
