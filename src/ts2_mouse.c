@@ -11,10 +11,12 @@
  *     since last time are added to the same two angles directly: so many
  *     degrees a count, whatever the speed, which is what mouse aim is on a
  *     PC. Only for player 1, only when look itself turned the player (not
- *     on a mounted gun, not in a cutscene or a menu, where look is not
- *     called or turns nothing), and scaled by the field of view so a scope
- *     zoomed four times turns four times finer. The game's own Inverse Look
- *     preference inverts the mouse too.
+ *     on a mounted gun, not in a menu, where look is not called or turns
+ *     nothing), only when the camera is the player's own eye (look runs
+ *     through a level's opening fly-over too), and scaled by the field of
+ *     view so a scope zoomed four times turns four times finer. Not
+ *     inverted unless ts2_mouse_invert says so: the game's own Inverse
+ *     Look is on in a new profile, and a PC shooter's mouse is not.
  *
  *   auto lookahead: with that preference on, look tilts the view back to
  *     level while you run with nothing on the look stick. With a mouse the
@@ -35,6 +37,9 @@
  * "FRAME:DX:DY,..." adds DX, DY counts at those presents (counted from the
  * first), as the window would; it needs mouse look on (RECOMP_MOUSE_LOOK=1).
  * RECOMP_TS2_MOUSE_LOG=1 prints what look did with it.
+ *
+ * Settings (the title's settings file, or the environment variable):
+ *   ts2_mouse_invert = 1    RECOMP_TS2_MOUSE_INVERT   mouse up looks down
  */
 #include <math.h>
 #include <stddef.h>
@@ -81,6 +86,7 @@ static struct {
     unsigned logged;
     const char *seq;        /* RECOMP_TS2_MOUSE_SEQ, what is left of it */
     volatile int held;      /* ts2_mouse_hold */
+    int      invert;        /* ts2_mouse_invert */
 } M;
 
 void ts2_mouse_hold(int on)
@@ -88,9 +94,12 @@ void ts2_mouse_hold(int on)
     M.held = on;
 }
 
+/* A guest pointer worth following: low memory, or the contiguous window at
+ * 0x80000000 where the game's heap objects (the player records, the camera
+ * context) are. */
 static int m_ptr_ok(uint32_t a)
 {
-    return a >= 0x10000u && a < 0x08000000u;
+    return (a >= 0x10000u && a < 0x08000000u) || (a >= 0x80000000u && a < 0x88000000u);
 }
 
 static int m_in_level(void)
@@ -105,9 +114,23 @@ static uint32_t m_player1(void)
     return m_ptr_ok(p) ? p : 0;
 }
 
-static float m_sign(uint32_t a)
+/* The camera is player 1's eye: not a cutscene's or a fly-over's camera
+ * (nor the debugging tools' free camera). The camera was made last frame,
+ * so it trails the eye by a frame's step. */
+static int m_camera_is_eye(uint32_t p)
 {
-    return a && M_MEMF(a) < 0.0f ? -1.0f : 1.0f;
+    uint32_t ctx = A->context ? M_MEM32(A->context) : 0;
+    float d = 0.0f, e;
+    int i;
+
+    if (!m_ptr_ok(ctx))
+        return 1;                       /* nothing to tell by */
+    for (i = 0; i < 3; i++) {
+        e = M_MEMF(ctx + TS2_CTX_EYE + 4u * (uint32_t)i) -
+            M_MEMF(p + TS2_PM_EYE + 4u * (uint32_t)i);
+        d += e * e;
+    }
+    return d < 1.0f;
 }
 
 /* ── the bindings filter ─────────────────────────────────────── */
@@ -170,6 +193,7 @@ void ts2_mouse_frame(void)
     recomp_bindings_set_filter(m_filter);
     M.log = recomp_config_bool("RECOMP_TS2_MOUSE_LOG", NULL, 0);
     M.seq = getenv("RECOMP_TS2_MOUSE_SEQ");
+    M.invert = recomp_config_bool("RECOMP_TS2_MOUSE_INVERT", "ts2_mouse_invert", 0);
     if (A->player_base) {
         recomp_mouse_set_direct(1);
         fprintf(stderr, "[TS2-MOUSE] the mouse turns the player directly%s\n",
@@ -202,7 +226,7 @@ void ts2_mouse_look(void (*look)(void))
     flags = M_MEM32(p + TS2_PM_FLAGS);
     mode = M_MEM32(p + TS2_PM_MODE);
     if (!(flags & 8) || M_MEM32(p + TS2_PM_HELD) || mode == 6 || mode == 7 ||
-        mode == 8 || mode == 9)
+        mode == 8 || mode == 9 || !m_camera_is_eye(p))
         return;
 
     /* Auto lookahead with a still look stick: not with a mouse. */
@@ -224,14 +248,13 @@ void ts2_mouse_look(void (*look)(void))
     if (fov > 1.0f && fov < 170.0f)
         deg *= fov / TS2_MOUSE_FOV;
 
-    yaw = M_MEMF(p + TS2_PM_YAW) + dx * deg * m_sign(A->yaw_rate);
+    yaw = M_MEMF(p + TS2_PM_YAW) - dx * deg;      /* turning right lowers it */
     while (yaw < 0.0f)
         yaw += 360.0f;
     while (yaw >= 360.0f)
         yaw -= 360.0f;
     /* Screen y grows down; up on the mouse is up on the stick. */
-    pitch += -dy * deg * m_sign(A->pitch_rate) *
-             ((M_MEM8(M_MEM32(p + TS2_PM_PREFS) + 2) & 1) ? -1.0f : 1.0f);
+    pitch += (M.invert ? dy : -dy) * deg;
     limit = A->pitch_limit ? M_MEMF(A->pitch_limit) : 90.0f;
     if (limit > 0.0f && limit <= 90.0f) {
         if (pitch > limit)  pitch = limit;

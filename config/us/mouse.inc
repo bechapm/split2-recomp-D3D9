@@ -14,12 +14,11 @@ static const Ts2MouseAddrs k_ts2_mouse = {
     /* level_id and the first value that is not a playable level, as the
      * debugging tools have them (0x65 measured in the front end). */
     0x004A46EC, 0x64,
-    /* yaw_rate, pitch_rate: look adds yaw_rate * P+0x8A8 * ctx+0x324 / 3600
-     * * time scale * stick x to P+0x148, and the same with pitch_rate and
-     * stick y to P+0x14C; only their signs are used here, so the mouse
-     * turns the way the stick does. pitch_limit: look clamps P+0x14C to
-     * +-[0x00497104] when it is done. */
-    0x00497138, 0x0049713C, 0x00497104,
+    /* pitch_limit: look clamps P+0x14C to +-[0x00497104] when it is done
+     * (measured 40 in Siberia). Look's turn rates are [0x00497138] and
+     * [0x0049713C] (measured 160 and 80): it adds rate * P+0x8A8 * ctx+0x324
+     * / 3600 * time scale * stick to the angles. */
+    0x00497104,
     /* context: the camera/render context ([0x004B2F60]); +0x324 is the
      * field of view look scales its turn rate by, smaller when zoomed. */
     0x004B2F60, 0x324,
