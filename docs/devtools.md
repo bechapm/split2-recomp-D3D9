@@ -6,8 +6,8 @@ changing its speed, a readout of where you are and what the crosshair is
 on, saving and returning to a position, a free camera, noclip, a
 wireframe view, hiding the HUD and giving yourself any weapon or item, all
 from a menu on screen. They are TimeSplitters 2's own
-(`src/ts2_devtools.c`); the toolkit only supplies keys, the overlay's lines
-and the pad. USA release only for now, apart from unlock everything, which
+(`src/ts2_devtools.c`); the toolkit only supplies the keyboard, the overlay's
+lines and the pad. USA release only for now, apart from unlock everything, which
 PAL has too.
 
 ## The menu
@@ -48,42 +48,24 @@ per line, or set the environment variable beside it:
 
 | Setting | Environment variable | What it does |
 | --- | --- | --- |
-| `ts2_dev = 0` | `RECOMP_TS2_DEV` | No menu and no keys (they are on by default) |
+| `ts2_dev = 0` | `RECOMP_TS2_DEV` | No menu (it is on by default) |
 | `ts2_god = 1` | `RECOMP_TS2_GOD` | God mode from the start |
 | `ts2_infinite_ammo = 1` | `RECOMP_TS2_INFINITE_AMMO` | Infinite ammo from the start |
-| `ts2_invisible = 1` | `RECOMP_TS2_INVISIBLE` | Enemies cannot see you |
+| `ts2_invisible = 1` | `RECOMP_TS2_INVISIBLE` | Enemies, security cameras and wall guns cannot see you |
 | `ts2_unlock_all = 1` | `RECOMP_TS2_UNLOCK_ALL` | Every character, level and cheat |
 | `ts2_readout = 1` | `RECOMP_TS2_READOUT` | The readout from the start |
 | `ts2_speed = 0.5` | `RECOMP_TS2_SPEED` | The game's speed: 0.25, 0.5, 1, 2 or 4 |
 | `ts2_hud = 0` | `RECOMP_TS2_HUD` | The game's HUD hidden from the start |
 | `ts2_give_item = 11` | `RECOMP_TS2_GIVE_ITEM` | The item "Give item" starts on (its number in the game's item list) |
 | `ts2_teleport = x,y,z[,yaw,pitch]` | `RECOMP_TS2_TELEPORT` | Where you are put once the first level is playing |
-| `ts2_dev_seq = FRAME:ACTION,...` | `RECOMP_TS2_DEV_SEQ` | The keys' actions at given frames (below) |
+| `ts2_dev_seq = FRAME:ACTION,...` | `RECOMP_TS2_DEV_SEQ` | The menu's actions at given frames (below) |
 | | `RECOMP_TS2_POSITIONS` | Where saved positions are kept (default `ts2_positions.txt` beside the executable) |
 
-## Shortcut keys
+## Free camera and noclip
 
-The menu's items on keys, only while the game's window is in front.
-
-| Key | Tool |
-| --- | --- |
-| F1 | The menu |
-| F2 | God mode |
-| F3 | Infinite ammo |
-| F4 | Invisible to enemies |
-| Home | Unlock everything |
-| F5 | Save your position (one per level) |
-| F6 | Back to the saved position |
-| F7 | Free camera |
-| F8 | Noclip |
-| F12 or Pause | Stop the game's clock, or start it again |
-| Page Down | One frame forward while the clock is stopped |
-| End | Wireframe view (every draw as lines; `RECOMP_WIREFRAME=1` starts with it on) |
-| - and + | Slower and faster |
-| Insert | The game's HUD on and off |
-
-F9, F10 and F11 stay the toolkit's: the frame-rate counter, the frame cap and
-a frame capture.
+Every tool is a row of the menu; F1 is the only key the tools have of their
+own, and only while the game's window is in front. F9, F10 and F11 stay the
+toolkit's: the frame-rate counter, the frame cap and a frame capture.
 
 **Free camera.** Left stick (or WASD) moves, right stick, the arrow keys or the mouse
 (with mouse look on) looks, right trigger (or Space) rises, left trigger (or Ctrl) sinks, hold A
@@ -117,9 +99,9 @@ readout on, the log gets the same lines once a second (`[TS2-DEV] frame N:`).
 
 ## Scripted runs
 
-A scripted run's window never has the focus, so it cannot press the keys.
-`ts2_dev_seq` presses them instead, at frames counted from the first frame
-the game presents:
+A scripted run's window never has the focus, so nothing can be chosen from
+the menu by hand. `ts2_dev_seq` runs the menu's actions instead, at frames
+counted from the first frame the game presents:
 
 ```text
 RECOMP_TS2_DEV_SEQ=4200:freeze,4210:freecam,4600:step,4700:freeze,4710:freecam
@@ -162,9 +144,13 @@ how it was found.
   sites in the AI) reach nothing when they reach you. That alone did not
   stop guards, because once an enemy knows about you it keeps knowing with
   no ray at all, so the game's record of who knows about whom is held at
-  "unaware" for you, and an enemy whose target is you loses it. Bullets are
-  untouched. Not yet covered: security cameras, alarms and sensors, and enemies that
-  hear gunfire.
+  "unaware" for you, and an enemy whose target is you loses it. Security
+  cameras and wall guns ("remotes") have their own eyes, one function, which
+  now answers no for you, so they raise no alarm. You also wear the game's own
+  cloak, the yellow orb of arcade matches, with no time limit, and see your
+  gun as glass. The cloak alone would not do: bots' target scans skip a cloaked character, but story enemies and
+  cameras never look at it. Bullets are untouched. Not covered: alarms a
+  level's script raises by itself, and enemies that hear gunfire.
 - **Noclip and teleport** answer the character sweep, the one function every
   one of the player's movement modes moves through, with the tool's
   position, so the game builds your eye, your character and the rest from
@@ -187,31 +173,26 @@ how it was found.
 - **Give item** calls the function picking an item up calls, so its name
   shows and the pickup sound plays, then fills its ammunition and puts it in
   your hands. Left and right choose from the game's 42 items, by the names
-  the game itself shows; "(have)" means you already carry it. A level's data
-  holds only the guns that level uses (as an arcade match loads only the
-  set chosen for it), and the game would look for any other on the disc,
-  where it is not, and crash: those are marked "(not here)" and are not
-  given, unless the "every gun" mod below is in use.
+  the game itself shows; "(have)" means you already carry it. Every gun can
+  be given in every level (below). Anything the mounted data still lacks is
+  marked "(not here)" and not given: the game would look for it on the disc,
+  where it is not, and crash.
 
 ## Every gun in every level
 
-A level's data carries only the guns that level uses. To be able to give
-any of them anywhere, make a mod from your own disc that adds every gun's
-files (its models from `gun.pak`, its firing sound from a level that has
-it) to every level, and run with it:
-
-```bash
-python3 tools/ts2mod.py guns game/data private/mods/allguns
-RECOMP_MODS=private/mods/allguns ./split2_recomp     # ';' between mods on Windows
-```
+A level's data carries only the guns that level uses. With the tools on
+(`ts2_dev`, the default), every gun is added to every level at run time,
+from the game's own data: all of `gun.pak`, and the firing sounds in
+`sounds.pak`. There is nothing to build or install, nothing is written to
+disk, and a mod in `RECOMP_MODS` that supplies one of the same files wins.
+Only names a level lacks are added: a level's own copy always stays.
 
 The game still loads a gun only when it is given or picked up, so nothing
 is loaded up front. It sets up a model's textures only for the models
 in the level's own data, while the level loads, which a gun given from
 another level's data misses; so while a level plays, the tools set up the
 textures of a model loaded from outside the level's data as the game's own
-run-time code does. The mod is the game's own files: keep it in `private/`
-and never commit or share it.
+run-time code does. The same goes for a gun's HUD textures.
 
 Not possible: a full save state. The game is native code running on real
 threads with graphics objects behind it, so there is no snapshot to restore;

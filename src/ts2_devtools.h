@@ -101,6 +101,10 @@ typedef struct Ts2DevAddrs {
     void (*named_load)(void);
     void (*named_request)(void);
     uint32_t ammo_hud, ammo_stride, ammo_count;
+    /* cloak_on(status), cloak_off(status), cdecl: the game's cloak, with no
+     * time limit, on a character's status block. */
+    void (*cloak_on)(void);
+    void (*cloak_off)(void);
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the
@@ -126,6 +130,8 @@ enum {
     TS2_R_ITEM      = 0x0C8,  /* the item in hand */
     TS2_R_OWNED     = 0x984,  /* a dword per item: owned */
     TS2_R_TARGET    = 0x1300, /* an enemy's target: a character object */
+    TS2_R_STATUS    = 0x1498, /* its status block: +4 flags */
+    TS2_STATUS_CLOAK = 0x10,  /* in those flags: cloaked */
     TS2_CTX_WORLD   = 0x180,  /* the camera's world matrix: right, up, forward, eye rows */
     TS2_CTX_EYE     = 0x27C,  /* the eye the camera update hands the look-at */
     TS2_CTX_ROOM    = 0x294,  /* the room drawing starts from */
@@ -178,5 +184,13 @@ void ts2_dev_model_load(void (*load)(void));
  * when the file is not held whole in a pak's memory, as a mod's file is
  * not. Inside the model loader, the buffer is the model's data. */
 void ts2_dev_file_read(void (*read)(void));
+
+/* What a security camera or wall gun sees (wraps the release's sees(chr),
+ * with the remote in esi): under invisibility, not the player. */
+void ts2_dev_remote_sees(void (*sees)(void));
+
+/* Whether every gun goes into every level from the game's own data
+ * (src/recomp_manual.c): the tools are on and this release can give one. */
+int ts2_dev_gives_guns(void);
 
 #endif
