@@ -52,6 +52,9 @@
  * first), as the window would; it needs mouse look on (RECOMP_MOUSE_LOOK=1).
  * RECOMP_TS2_MOUSE_LOG=1 prints what look did with it.
  *
+ * "FRAME:key:NAME:N" holds a button for N presents as the keyboard would
+ * send it (dpad_left, dpad_right, dpad_up, dpad_down, rthumb, start).
+ *
  * Settings (the title's settings file, or the environment variable):
  *   ts2_mouse_invert = 1    RECOMP_TS2_MOUSE_INVERT   mouse up looks down
  *   ts2_steady_aim = 0      RECOMP_TS2_STEADY_AIM     sway while aiming too
@@ -60,6 +63,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "ts2_mouse.h"
 #include "recomp/gen/recomp_cpu.h"   /* g_esp */
@@ -104,6 +108,10 @@ static struct {
     int      invert;        /* ts2_mouse_invert */
     int      steady;        /* ts2_steady_aim */
     uint32_t still;         /* the record whose sway is held at 0 (aiming) */
+    volatile unsigned unaim;    /* a weapon change began aimed: the present it did, or 0 */
+    volatile int unaim_seen;    /* and the game has started changing weapon */
+    volatile WORD key_buttons;  /* RECOMP_TS2_MOUSE_SEQ's keys, as the keyboard */
+    volatile unsigned key_until;
 } M;
 
 void ts2_mouse_hold(int on)
@@ -163,12 +171,18 @@ static int m_scoped(uint32_t p)
     return M_MEM32(p + TS2_PM_AIMING) && (M_MEM32(p + TS2_PM_FLAGS) & TS2_PF_SCOPE);
 }
 
-static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
+static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *from_keyboard)
 {
+    XBOX_GAMEPAD keys = *from_keyboard;
+    const XBOX_GAMEPAD *kbm = &keys;
     uint32_t p;
 
     if (port != 0)
         return;
+    if (M.key_buttons && M.frame < M.key_until) {
+        keys.wButtons |= M.key_buttons;     /* RECOMP_TS2_MOUSE_SEQ */
+        pad->wButtons |= M.key_buttons;
+    }
     if (!m_in_level()) {
         /* The front end: Escape (Start, from the keyboard) backs out. */
         if (A->level_id && (kbm->wButtons & XBOX_GAMEPAD_START)) {
@@ -177,23 +191,43 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
         }
         return;
     }
+    /* Changing weapon aimed: aim mode is a toggle by default and the game
+     * carries it over -- it drops aiming while it changes (flags 0x10) and
+     * puts it back on the new weapon, so the sniper rifle came up looking
+     * down its scope. So a change asked for while aiming (the D-pad's left
+     * or right, from the pad or the keys) is followed: once the game has
+     * changed weapon, aim mode's own button (R3) is pressed until aiming
+     * ends, which un-toggles it. With the hold setting the button is down
+     * already, and the aim stays. Given up if no change starts in half a
+     * second (nothing else to change to). */
+    p = m_player1();
+    if (p) {
+        uint32_t flags = M_MEM32(p + TS2_PM_FLAGS);
+        int aiming = M_MEM32(p + TS2_PM_AIMING) != 0;
+
+        if (!M.unaim) {
+            if (aiming && (pad->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT)) &&
+                !(m_scoped(p) && (kbm->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT)))) {
+                M.unaim = M.frame ? M.frame : 1;
+                M.unaim_seen = 0;
+            }
+        } else if (flags & TS2_PF_CHANGING) {
+            M.unaim_seen = 1;
+        } else if (M.unaim_seen) {
+            if (aiming)
+                pad->wButtons |= XBOX_GAMEPAD_RIGHT_THUMB;
+            else
+                M.unaim = 0;
+        } else if (M.frame - M.unaim > 30u) {
+            M.unaim = 0;
+        }
+    }
+
     /* Looking through a scope: the wheel (the D-pad's left and right, from
      * the mouse or the keyboard) zooms, as the D-pad's up and down do.
      * Only then: aim mode with a gun that has no scope, or an item with no
      * crosshair at all (the temporal uplink), zooms nothing, and the wheel
      * would stop changing weapon with nothing on screen to say why. */
-    p = m_player1();
-    if (p && M_MEM32(p + TS2_PM_AIMING) && !m_scoped(p) &&
-        (pad->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT))) {
-        /* Changing weapon while aiming without a scope: aim mode is a
-         * toggle by default and the game carries it over, so the next gun
-         * -- a sniper rifle -- would come up looking down its scope. Aim
-         * mode's own button goes with the change, once: aiming ends when
-         * the game takes it, and so does the press. Held aim (the hold
-         * setting) has it down already, which changes nothing. */
-        pad->wButtons |= XBOX_GAMEPAD_RIGHT_THUMB;
-        return;
-    }
     if (p && m_scoped(p)) {
         if (kbm->wButtons & XBOX_GAMEPAD_DPAD_LEFT) {
             pad->wButtons &= (WORD)~XBOX_GAMEPAD_DPAD_LEFT;
@@ -206,6 +240,31 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
     }
 }
 
+/* "key:NAME:FRAMES": a button held as the keyboard sends it, through the
+ * bindings filter (the toolkit's RECOMP_INPUT_SEQ is a pad added after it,
+ * so it never reaches the filter). */
+static void m_seq_key(const char *s, char **end)
+{
+    static const struct { const char *name; WORD bit; } k_keys[] = {
+        { "dpad_up", XBOX_GAMEPAD_DPAD_UP },     { "dpad_down", XBOX_GAMEPAD_DPAD_DOWN },
+        { "dpad_left", XBOX_GAMEPAD_DPAD_LEFT }, { "dpad_right", XBOX_GAMEPAD_DPAD_RIGHT },
+        { "rthumb", XBOX_GAMEPAD_RIGHT_THUMB },  { "start", XBOX_GAMEPAD_START },
+    };
+    size_t i, n;
+    unsigned long frames = 3;
+
+    for (n = 0; s[n] && s[n] != ':' && s[n] != ','; n++)
+        ;
+    *end = (char *)s + n;
+    if (s[n] == ':')
+        frames = strtoul(s + n + 1, end, 10);
+    for (i = 0; i < sizeof k_keys / sizeof k_keys[0]; i++)
+        if (strlen(k_keys[i].name) == n && strncmp(s, k_keys[i].name, n) == 0) {
+            M.key_buttons = k_keys[i].bit;
+            M.key_until = M.frame + (unsigned)frames;
+        }
+}
+
 /* RECOMP_TS2_MOUSE_SEQ: the steps due by this frame. */
 static void m_seq(void)
 {
@@ -216,6 +275,13 @@ static void m_seq(void)
 
         if (end == M.seq || *end != ':' || at > M.frame)
             return;
+        if (strncmp(end + 1, "key:", 4) == 0) {
+            m_seq_key(end + 5, &end);
+            while (*end && *end != ',')
+                end++;
+            M.seq = *end ? end + 1 : NULL;
+            continue;
+        }
         dx = strtof(end + 1, &end);
         dy = *end == ':' ? strtof(end + 1, &end) : 0.0f;
         recomp_mouse_move(dx, dy);
