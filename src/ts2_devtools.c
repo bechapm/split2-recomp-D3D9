@@ -116,6 +116,7 @@
 #include <string.h>
 
 #include "ts2_devtools.h"
+#include "ts2_mouse.h"
 #include "recomp/gen/recomp_cpu.h"   /* g_esp */
 #include "recomp/ts2_region.h"
 
@@ -1712,6 +1713,7 @@ static void dev_withhold(void)
     }
     if (want != held) {
         xbox_InputWithhold(0, want);
+        ts2_mouse_hold(want);           /* nor does the mouse turn the player */
         held = want;
     }
 }

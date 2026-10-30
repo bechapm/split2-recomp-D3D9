@@ -92,6 +92,22 @@ reads "B" and acts as the game's A.
 
 ### Native mouselook
 
+**Started 29 Oct 2026 (USA release):** the mouse adds to the view angles
+directly after the game's own look function, `sub_00148A60`, scaled by the
+field of view, with auto lookahead held off, not inverted by the game's
+Inverse Look (`ts2_mouse_invert`), and only when the camera is the player's
+eye (`src/ts2_mouse.c`, addresses in `config/us/mouse.inc`). While aiming,
+the breathing sway (`sub_00140E10`, the angles at +0x188/+0x18C the camera
+adds to the view) is held at 0, folded into the view angles as aiming
+starts and taken back out as it ends, so the camera does not move at either
+(`ts2_steady_aim`). The keys
+are PC-shooter defaults on the Default control setup's actions
+(`config/input_defaults.json`), the wheel zooms while looking through a scope and changes
+weapon otherwise, and Escape pauses in a level and backs out of menus. Not
+yet: the PAL release's look, mounted guns and look's mode 7, which stay on
+the right stick; clicking the menus. The plan below is how it looked
+before.
+
 The toolkit has no mouse input today.
 
 | Step | Where | Estimate |

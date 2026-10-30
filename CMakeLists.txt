@@ -36,6 +36,15 @@ endif()
 
 add_subdirectory(${XBOXRECOMP_DIR} ${CMAKE_BINARY_DIR}/xboxrecomp)
 
+# TimeSplitters 2's own keys, the ones PC shooters share (WASD, the mouse to
+# aim, E to use, R to reload, the wheel for weapons, Escape to pause), on
+# the actions of its Default controls; the game and the launcher both start
+# from them. Mouse look is on unless a player turns it off. src/ts2_mouse.c
+# has the mouse turning the player and the keys that mean two things.
+if(COMMAND recomp_title_input)
+    recomp_title_input(DEFAULTS config/input_defaults.json MOUSE_LOOK)
+endif()
+
 # CONFIGURE_DEPENDS so a re-lift that adds or removes a chunk is picked up
 # without a manual re-configure.
 file(GLOB RECOMP_GEN_SOURCES CONFIGURE_DEPENDS "src/recomp/gen/*.c")
@@ -53,6 +62,7 @@ endif()
 set(SPLIT2_SOURCES
     src/main.c
     src/recomp_manual.c
+    src/ts2_mouse.c
     src/ts2_devtools.c
     ${RECOMP_GEN_SOURCES}
 )

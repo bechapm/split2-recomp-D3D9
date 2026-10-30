@@ -81,17 +81,32 @@ the shortcut `icon.png` from the release folder as its icon.
 
 ## Controls
 
-Controllers work as an Xbox pad. The keyboard plays as controller 1:
+Controllers work as an Xbox pad. The keyboard and mouse play as controller 1,
+laid out the way PC shooters are:
 
-| Xbox | Key |
-| --- | --- |
-| D-pad | Arrows |
-| A, B, X, Y | Z, X, A, S |
-| Start, Back | Enter, Backspace |
-| White, Black | Q, W |
-| Left, right trigger | E, R |
+| Action | Keyboard and mouse | Xbox pad |
+| --- | --- | --- |
+| Move, side step | W A S D | Left stick |
+| Turn and look | The mouse, directly | Right stick |
+| Fire | Left mouse button | Right trigger |
+| Alternate fire | Middle mouse button | Left trigger |
+| Aim (and zoom a scoped gun) | Right mouse button | Right stick press |
+| Zoom in, out through a scope | Mouse wheel up, down (or Z, X) | D-pad up, down |
+| Previous, next weapon | Mouse wheel up, down (or the left and right arrows) | D-pad left, right |
+| Activate (doors, switches) | E (or Enter) | A |
+| Reload | R | Y |
+| Crouch | Left Ctrl (or C) | Left stick press |
+| Pause | Escape | Start |
+| Menus: accept, back | Enter, Escape (or Backspace) | A, B |
+| Back button | Tab | Back |
 
-Change them in the launcher's Input tab.
+The mouse turns you by so many degrees a count, as in a PC shooter, rather
+than pushing the stick. It is not inverted, whatever the game's own Inverse
+Look says (`ts2_mouse_invert = 1` in the settings file inverts it). While you
+aim, the camera's breathing sway stops where it is, so the crosshair stays
+where you put it (`ts2_steady_aim = 0` keeps it). Most players will want the game's
+Auto Aim off. Change any of it in the
+launcher's Input tab (the mouse sensitivity is there too).
 
 While playing:
 
