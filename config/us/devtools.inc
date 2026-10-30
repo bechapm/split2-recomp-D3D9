@@ -27,6 +27,9 @@ extern void sub_00086360(void);
 extern void sub_00129460(void);
 extern void sub_001B7E60(void);
 extern void sub_001B7F70(void);
+/* named_record and named_load, below. */
+extern void sub_00149790(void);
+extern void sub_001B7D80(void);
 
 static const Ts2DevAddrs k_ts2_dev = {
     /* player_base: [0x00497028] is the local player records, 0xD3C each;
@@ -148,4 +151,16 @@ static const Ts2DevAddrs k_ts2_dev = {
      * rec+0xC has 0x10000000, skipping id 0x40000000; each writes the
      * texture's slot over the id (code; measured). */
     sub_00086360, sub_00129460, sub_001B7E60, sub_001B7F70, 0x0C,
+    /* named_textures, named_count: 0x2BF390 + i * 0x10, 548 entries, name
+     * at +8 ("host0:textures/misc/<x>.raw"), handle at +0xC. sub_000A9AA0(i)
+     * gives the HUD the handle; sub_000A9BA0(i) asks for it (handle -1, and
+     * a resident record queued by sub_00149FA0); a weapon's are asked for
+     * by sub_000B0010 (its ammunition types' entries at 0x2C167C/0x2C1680 +
+     * type * 0xD0, and the 0x80 group). The level-load pass sub_00149810
+     * loads each record with sub_001B7D80(name, [rec+0x10], rec+0x14), and
+     * sub_000A9D10 copies sub_00149790(name)->+0x14 into the table;
+     * sub_000A9C20 resets the table at each level start (code; measured:
+     * hudtanklaser 78, ammo_laser 43 and others stayed -1 after a give). */
+    0x002BF390, 548,
+    sub_00149790, sub_001B7D80,
 };

@@ -85,6 +85,16 @@ typedef struct Ts2DevAddrs {
     void (*texture_load)(void);
     void (*texture_load_alt)(void);
     uint32_t model_materials; /* a loaded model: its material list */
+    /* The named textures (the HUD's: crosshairs, ammunition icons), a table
+     * of 0x10-byte entries, name at +8 and handle at +0xC (-2 not asked
+     * for, -1 asked for, else loaded). Giving a gun asks for its own; only
+     * a level load loads them, and one not loaded drew as a white
+     * rectangle over the view. Loaded as the level-load pass does:
+     * rec = named_record(name), cdecl; named_load(name, [rec+0x10],
+     * rec+0x14); the handle is then [rec+0x14]. */
+    uint32_t named_textures, named_count;
+    void (*named_record)(void);
+    void (*named_load)(void);
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the

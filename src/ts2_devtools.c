@@ -179,6 +179,7 @@ static struct {
     int  frozen, step, freecam, noclip, invisible;
     int  hud_off;                       /* the game's HUD not drawn */
     int  item;                          /* what "Give item" gives */
+    int  named_frames;                  /* frames left to load asked-for HUD textures */
     int  god_hold;                      /* frames god stays on after noclip */
     int  speed;                         /* index in k_dev_speeds */
     float speed_carry;                  /* the fraction of a tick not yet run */
@@ -1072,6 +1073,39 @@ static uint32_t dev_record(uint32_t p)
     return dev_ptr_ok(r) ? r : 0;
 }
 
+/* The HUD textures a given gun asked for, which only a level load would
+ * load (a gun the level carries has them already): loaded now, as the
+ * level-load pass loads them. */
+static void dev_load_named(void)
+{
+    uint32_t i, e, name, rec, args[3];
+    int32_t h;
+
+    if (!A->named_textures || !A->named_record || !A->named_load || !dev_in_level())
+        return;
+    for (i = 0; i < A->named_count; i++) {
+        e = A->named_textures + i * 0x10u;
+        if ((int32_t)DEV_MEM32(e + 0xC) != -1)
+            continue;
+        name = DEV_MEM32(e + 8);
+        if (!dev_ptr_ok(name))
+            continue;
+        rec = dev_guest_call(A->named_record, dev_scratch(0), &name, 1);
+        if (!dev_ptr_ok(rec))
+            continue;
+        h = (int32_t)DEV_MEM32(rec + 0x14);
+        if (h < 0) {
+            args[0] = name;
+            args[1] = DEV_MEM32(rec + 0x10);
+            args[2] = rec + 0x14;
+            dev_guest_call(A->named_load, dev_scratch(0), args, 3);
+            h = (int32_t)DEV_MEM32(rec + 0x14);
+        }
+        if (h >= 0)
+            DEV_MEM32(e + 0xC) = (uint32_t)h;
+    }
+}
+
 /* The chosen item, as picking it up gives it (its name shown, the pickup
  * sound), its ammunition full, and in hand. */
 static void dev_give(uint32_t p)
@@ -1098,6 +1132,8 @@ static void dev_give(uint32_t p)
     if (A->fill_ammo)
         dev_guest_call(A->fill_ammo, dev_scratch(0), args, 2);
     DEV_MEM32(r + TS2_R_ITEM) = (uint32_t)D.item;
+    D.named_frames = 30;                /* its HUD textures, asked for now or as it is drawn */
+    dev_load_named();
     dev_say("gave %s (%d)", name, D.item);
 }
 
@@ -1679,6 +1715,10 @@ void ts2_dev_frame(void)
         dev_freecam_step();
     if (D.noclip && p && !D.menu)
         dev_noclip_step(p);
+    if (D.named_frames > 0) {
+        D.named_frames--;
+        dev_load_named();
+    }
     dev_withhold();
     dev_show(p);
 }
