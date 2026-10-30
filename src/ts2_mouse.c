@@ -104,6 +104,7 @@ static struct {
     int      invert;        /* ts2_mouse_invert */
     int      steady;        /* ts2_steady_aim */
     uint32_t still;         /* the record whose sway is held at 0 (aiming) */
+    volatile int scoped;    /* this aim went through a scope: the wheel zooms */
 } M;
 
 void ts2_mouse_hold(int on)
@@ -153,7 +154,9 @@ static int m_camera_is_eye(uint32_t p)
 /* ── the bindings filter ─────────────────────────────────────── */
 
 /* The camera is zoomed in: aim mode with a scope (60 to 17 measured in
- * Siberia; aim mode without one leaves the field of view at 60). */
+ * Siberia; aim mode without one leaves the field of view at 60). Once it
+ * has been, the wheel zooms until aiming ends, in case a scope's widest
+ * setting is wider than this. */
 static int m_zoomed(void)
 {
     uint32_t ctx = A->context ? M_MEM32(A->context) : 0;
@@ -185,7 +188,11 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
      * crosshair at all (the temporal uplink), zooms nothing, and the wheel
      * would stop changing weapon with nothing on screen to say why. */
     p = m_player1();
-    if (p && M_MEM32(p + TS2_PM_AIMING) && m_zoomed()) {
+    if (!p || !M_MEM32(p + TS2_PM_AIMING))
+        M.scoped = 0;
+    else if (m_zoomed())
+        M.scoped = 1;           /* and stays, if zooming out widens it past */
+    if (M.scoped) {
         if (kbm->wButtons & XBOX_GAMEPAD_DPAD_LEFT) {
             pad->wButtons &= (WORD)~XBOX_GAMEPAD_DPAD_LEFT;
             pad->wButtons |= XBOX_GAMEPAD_DPAD_UP;
@@ -310,37 +317,45 @@ void ts2_mouse_look(void (*look)(void))
 
 /* ── breathing ───────────────────────────────────────────────── */
 
-/* Moves player 1's view angles by the sway, so yaw + sway (what the camera
- * shows) is kept when the sway is taken away (sign 1) or given back (-1). */
-static void m_fold_sway(uint32_t p, float sign)
+/* Moves player 1's view angles by a sway, so yaw + sway (what the camera
+ * shows) is kept when that sway is taken away (sign 1) or given back (-1). */
+static void m_fold_sway(uint32_t p, float sign, float sway_yaw, float sway_pitch)
 {
-    float yaw = M_MEMF(p + TS2_PM_YAW) + sign * M_MEMF(p + TS2_PM_SWAY_YAW);
+    float yaw = M_MEMF(p + TS2_PM_YAW) + sign * sway_yaw;
 
     while (yaw < 0.0f)
         yaw += 360.0f;
     while (yaw >= 360.0f)
         yaw -= 360.0f;
     M_MEMF(p + TS2_PM_YAW) = yaw;
-    M_MEMF(p + TS2_PM_PITCH) = M_MEMF(p + TS2_PM_PITCH) + sign * M_MEMF(p + TS2_PM_SWAY_PITCH);
+    M_MEMF(p + TS2_PM_PITCH) = M_MEMF(p + TS2_PM_PITCH) + sign * sway_pitch;
 }
 
 void ts2_mouse_breath(void (*breath)(void))
 {
     uint32_t p;
     int still;
+    float shown_yaw = 0.0f, shown_pitch = 0.0f;
 
-    breath();
+    /* What the camera showed last: the game's own breathing sets the sway
+     * to 0 itself on the first tick through a scope, so it has to be read
+     * before it runs. */
     p = A->current_player ? M_MEM32(A->current_player) : 0;
+    if (p && p == m_player1()) {
+        shown_yaw = M_MEMF(p + TS2_PM_SWAY_YAW);
+        shown_pitch = M_MEMF(p + TS2_PM_SWAY_PITCH);
+    }
+    breath();
     if (!M.steady || !p || p != m_player1())
         return;
 
     /* The sway is made afresh each tick from the phases, which run on, so
      * there is nothing to undo: the camera adds whatever is here this tick. */
     still = M_MEM32(p + TS2_PM_AIMING) != 0;
-    if (still && M.still != p)
-        m_fold_sway(p, 1.0f);           /* aiming: keep the view where it is */
-    else if (!still && M.still == p)
-        m_fold_sway(p, -1.0f);          /* not: the sway resumes from here */
+    if (still && M.still != p)          /* aiming: keep the view where it is */
+        m_fold_sway(p, 1.0f, shown_yaw, shown_pitch);
+    else if (!still && M.still == p)    /* not: the sway resumes from here */
+        m_fold_sway(p, -1.0f, M_MEMF(p + TS2_PM_SWAY_YAW), M_MEMF(p + TS2_PM_SWAY_PITCH));
     M.still = still ? p : 0;            /* a new level's record starts afresh */
     if (still) {
         M_MEMF(p + TS2_PM_SWAY_YAW) = 0.0f;
