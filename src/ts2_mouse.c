@@ -364,12 +364,19 @@ static void m_mount(uint32_t p, uint32_t mode)
         chr = m_ptr_ok(chr) ? M_MEM32(chr + TS2_OBJ_DATA) : 0;
         obj = m_ptr_ok(chr) ? M_MEM32(chr + TS2_CHR_MOUNT) : 0;
         gun = m_ptr_ok(obj) ? M_MEM32(obj + TS2_OBJ_DATA) : 0;
-        if (!m_ptr_ok(gun) || M_MEM32(gun + TS2_GUN_KIND) == 0 || M_MEM32(gun + TS2_GUN_KIND) == 8)
+        gflags = m_ptr_ok(gun) ? M_MEM32(gun + TS2_GUN_FLAGS) : 0;
+        if (!m_ptr_ok(gun) || M_MEM32(gun + TS2_GUN_KIND) == 0 || M_MEM32(gun + TS2_GUN_KIND) == 8 ||
+            (M_MEM32(obj + TS2_OBJ_TYPE) != TS2_OBJ_TYPE_FREE_GUN &&
+             (gflags & 0x2) && !(gflags & 0x400))) {   /* look zeroes the stick for it */
+            if (M.log && M.frame - M.logged >= 60u) {
+                M.logged = M.frame;
+                fprintf(stderr, "[TS2-MOUSE] frame %u: mounted (mode 8), not turned: object "
+                                "0x%08X type 0x%X  gun 0x%08X kind %u flags 0x%X\n",
+                        M.frame, obj, m_ptr_ok(obj) ? M_MEM32(obj + TS2_OBJ_TYPE) : 0, gun,
+                        m_ptr_ok(gun) ? M_MEM32(gun + TS2_GUN_KIND) : 0, gflags);
+            }
             return;
-        gflags = M_MEM32(gun + TS2_GUN_FLAGS);
-        if (M_MEM32(obj + TS2_OBJ_TYPE) != TS2_OBJ_TYPE_FREE_GUN &&
-            (gflags & 0x2) && !(gflags & 0x400))
-            return;                         /* look zeroes the stick for it */
+        }
         took = m_take(&right, &up);
         M_MEMF(gun + TS2_GUN_YAW) = M_MEMF(gun + TS2_GUN_YAW) - right;
         M_MEMF(gun + TS2_GUN_PITCH) = M_MEMF(gun + TS2_GUN_PITCH) - up;
@@ -417,8 +424,15 @@ void ts2_mouse_look(void (*look)(void))
     flags = M_MEM32(p + TS2_PM_FLAGS);
     mode = M_MEM32(p + TS2_PM_MODE);
     if (!(flags & 8) || M_MEM32(p + TS2_PM_HELD) || mode == 6 || mode == 9 ||
-        mode == TS2_MODE_MOUNT_CLAMPED || mode == TS2_MODE_MOUNT || !m_camera_is_eye(p))
+        mode == TS2_MODE_MOUNT_CLAMPED || mode == TS2_MODE_MOUNT || !m_camera_is_eye(p)) {
+        if (M.log && M.frame - M.logged >= 60u) {
+            M.logged = M.frame;
+            fprintf(stderr, "[TS2-MOUSE] frame %u: not turned: flags 0x%X mode %u held %u "
+                            "camera %s\n", M.frame, flags, mode, M_MEM32(p + TS2_PM_HELD),
+                    m_camera_is_eye(p) ? "the eye" : "elsewhere");
+        }
         return;
+    }
 
     /* Auto lookahead with a still look stick: not with a mouse. */
     pitch = M_MEMF(p + TS2_PM_PITCH);
