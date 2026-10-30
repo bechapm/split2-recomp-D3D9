@@ -85,8 +85,8 @@ The menu's items on keys, only while the game's window is in front.
 F9, F10 and F11 stay the toolkit's: the frame-rate counter, the frame cap and
 a frame capture.
 
-**Free camera.** Left stick (or WASD) moves, right stick (or the arrow keys)
-looks, right trigger (or Space) rises, left trigger (or Ctrl) sinks, hold A
+**Free camera.** Left stick (or WASD) moves, right stick, the arrow keys or the mouse
+(with mouse look on) looks, right trigger (or Space) rises, left trigger (or Ctrl) sinks, hold A
 (or Shift) to go faster and B to go slower. The game reads an idle
 controller meanwhile, so you stay where you were. With the clock stopped
 you fly around a frozen scene. The view RTX Remix is given follows the free
