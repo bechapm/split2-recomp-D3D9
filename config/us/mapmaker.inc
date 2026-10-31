@@ -35,4 +35,8 @@ static const Ts2MapMakerAddrs k_ts2_mapmaker = {
      * 1, A takes it. Its hot spots (sub_000FFA50) only say where the title
      * and the lines are, all flagged 1, and its hand limits are all 0. */
     0x002D2C48, 0x00398E24,
+    /* lists: Load and Save Map's list of files, class 0x002D37D0 (draw
+     * sub_0011C440, bar 0x82 to 0x211), and its list of disks, 0x002D3A2C
+     * (sub_0011C780, bar 0x9B to 0x1EE). */
+    { { 0x002D37D0, 130, 529 }, { 0x002D3A2C, 155, 494 } },
 };

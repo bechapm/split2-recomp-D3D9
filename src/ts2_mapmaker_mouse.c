@@ -187,7 +187,7 @@ static int mm_hot_at(uint32_t s, float x, float y)
 {
     int n = M_MEMI(s + TS2_MS_HOT_COUNT), k;
     uint32_t hots = M_MEM32(s + TS2_MS_HOTS);
-    float right = 0.0f;
+    float left = 1.0e9f, right = 0.0f;
 
     if (n <= 0 || n > 256)
         return 0;
@@ -200,6 +200,12 @@ static int mm_hot_at(uint32_t s, float x, float y)
         if (r > right)
             right = r;
     }
+    /* On the Load and Save lists the bar runs wider still: the screen's. */
+    for (k = 0; k < 2; k++)
+        if (MA->lists[k].screen_class && M_MEM32(s + 4u) == MA->lists[k].screen_class) {
+            left = (float)MA->lists[k].left;
+            right = (float)MA->lists[k].right;
+        }
     for (k = 0; k < n; k++) {
         uint32_t h = hots + (uint32_t)k * TS2_HOT_SIZE;
         float hx = (float)M_MEM16(h + TS2_HOT_X), hy = (float)M_MEM16(h + TS2_HOT_Y);
@@ -207,7 +213,7 @@ static int mm_hot_at(uint32_t s, float x, float y)
 
         if (M_MEM16(h + TS2_HOT_FLAGS) & 0x81)
             continue;
-        if (x >= hx && x < right && y >= hy && y < hy + hh)
+        if (x >= (left < hx ? left : hx) && x < right && y >= hy && y < hy + hh)
             return (int)M_MEM16(h + TS2_HOT_ID);
     }
     return 0;

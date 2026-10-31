@@ -28,6 +28,9 @@ typedef struct Ts2MapMakerAddrs {
     /* The Mode question that opens a new map (Beginner, Advanced): its
      * screen's class, and the dword holding the line picked. */
     uint32_t mode_class, mode_row;
+    /* The Load and Save screens' lists: a screen's class, and how far its
+     * bar over a row runs, which is wider than the row's text. */
+    struct { uint32_t screen_class; int left, right; } lists[2];
 } Ts2MapMakerAddrs;
 
 /* In the menu state F (src/ts2_menu_mouse.h, TS2_MF_*). */
