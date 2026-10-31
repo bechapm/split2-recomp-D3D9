@@ -106,9 +106,73 @@ are PC-shooter defaults on the Default control setup's actions
 weapon otherwise, and Escape pauses in a level and backs out of menus. On
 a mounted gun (look's modes 7 and 8) the mouse turns the angles look's stick
 turns before look runs, so the gun's arc holds it, and the debugging tools'
-free camera turns by it too (`ts2_mouse_turn`). Not yet: the PAL release's
-look; clicking the menus. The plan below is how it looked
-before.
+free camera turns by it too (`ts2_mouse_turn`). **The menus (30 Oct
+2026):** while a menu is up (the front end, or the pause menu) the mouse is a
+pointer (the toolkit's `recomp_pointer_want`): moving it onto an item of the
+panel with the focus selects it as the panel's own update does (the item's
+selected flag, the panel's row and column, the move sound), a click presses
+A for it (or steps an option on), the right button is B and the wheel the
+D-pad's up and down (`src/ts2_menu_mouse.c`, addresses in
+`config/us/menu_mouse.inc`). The boxes are the game's own: each item's box
+from its panel's corner, as the panel draws it (`sub_000F2040`). The pause
+menu's Options and Quit pages have no boxes: their lines are 3D text on a
+moving mesh, placed by the mesh's matrix and by a fit measured from the
+picture, since the matrix that lays the text out is gone by the present
+(`n_box_3d`). The pointer stays through the front end's gaps between screens
+and for as long as the game is paused; a screen with nothing to select (Select
+Controller, Enter Name, the Inventory page) takes a click as Start and the
+right button as B. A click on an option's value steps it the way of the half
+it is on (or of the arrow), laid out as `sub_000F1230` draws it; a click on a
+button hint is its button, laid out as `sub_000EFEB0` draws them; a click on a
+pause page's arrow (`sub_000D1A00`) is the D-pad's left or right. The hints and
+values are measured with the game's own text width (`sub_001AC170`), called
+from the present. In widescreen the arrows have no place of their own in
+`k_ts2_ui_places`, so the width guess moves them: one arrow alone goes in the
+middle 4:3, two together are stretched, and a click is taken at either spot.
+Fixing that takes a wrap of `sub_000D1A00` and a relift. A click skips a
+cutscene: in the front end with no screen up, and in a level while the camera
+is not the player's eye and the player is not on a mounted gun
+(`src/ts2_mouse.c`), as the button `RECOMP_TS2_SKIP_BUTTON` names. A, the
+default, and Start skip the Siberia opening, its fly-over and the Introduction
+in Options; B does not. **PC conventions (31 Oct 2026):** a click acts when
+the button comes up over what it went down on, the right button does nothing
+in a menu, Escape and Backspace go back, Space chooses, the pointer hides
+while the keys or a pad drive the menu, and the hints name keys while the
+keyboard and mouse are in use (`[Enter]`, `[Esc]`, and the keys bound to Y
+and X, from the toolkit's `recomp_bindings_key_name`), a line that grows too
+wide stepping down to the game's narrower item font. A hint under the
+pointer is lit as the game lights its selected line: the pulsing colour
+inside the style's deep blue outline, drawn as `sub_001ACA50` draws its own
+(four passes around the line with `[0x0040BB10]` set). The pause pages'
+button pictures (`sub_000AA360`) and D-pad picture (`sub_000AB2A0`) are
+wrapped: a click on one is that button or way, and with the keys in use a
+button's picture is its key's name. A panel's own scroll arrows
+(`sub_000F0010`, the Character Select list's) are clickable, and a mirrored
+sprite (the pause pages' left arrow) is measured with its corners in order.
+**MapMaker (31 Oct 2026, `src/ts2_mapmaker_mouse.c`, addresses in
+`config/us/mapmaker.inc`):** in the editor (level 0x66) the pointer is
+written into the hand's position (`F+0x30`/`F+0x34`, 16.16) when the mouse
+moves, the left button is A while held (place, lasso), the right button B
+(delete), the wheel the triggers (zoom), and the pointer past the hand's
+limits pushes the left stick (the game's own scrolling). Its screens are the
+same hand over hot spots (`S+0x64C`, count `S+0x650`, the id under the hand
+in `S+0x648`) or rows the pointer picks by writing that id. In widescreen
+every site the placement table does not name is kept in proportion while
+the editor runs (`ts2_ui_area_default`), since the grid was stretched and
+the hand was not. Map Settings' and Editor Settings' value arrows (sprites
+from `0x00119D49`, `0x00119DC7`) pick their row and are the D-pad's left
+and right. The Mode question's hot spots are its title, the moving
+selection bar, then its lines; only the lines are counted. **The letter
+picker** (Enter Name, MapMaker's names, description and briefing; one module,
+`sub_001AD350` draws it and so says it is up, state `0x0040BB38 + player *
+0x40`) takes the pointer from the menu round it: the cell under it is
+written as the picked one (6 by 6 cells, 24 by 20 from the box's corner +
+(6, 4)) and a click is A. In a picker Backspace is X (delete) and Space Y
+(a space), as in a text box, and MapMaker's "Add  Cancel" line under its
+grid (`0x001ADD2C`) steps down to font 0x11 to fit its box with the keys
+named. Typing letters on the keyboard is not done: the game's window gets no
+text input yet (a toolkit change). Not yet: the PAL release. The plan below
+is how it looked before.
 
 The toolkit has no mouse input today.
 

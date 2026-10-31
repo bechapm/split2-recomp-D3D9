@@ -202,13 +202,13 @@ void sub_001B3AC0(void) { ts2_ui_enter(); sub_001B3AC0_gen(); ts2_ui_leave(); }
 extern void sub_000C4F10_gen(void);   /* PAL 0x000C4F80, -0x70 */
 void sub_000C4F10(void) { ts2_ui_enter(); sub_000C4F10_gen(); ts2_ui_leave(); }
 extern void sub_001B75A0_gen(void);   /* PAL 0x001B79B0, -0x410 */
-void sub_001B75A0(void) { ts2_ui_enter(); sub_001B75A0_gen(); ts2_ui_leave(); }
+void sub_001B75A0(void) { ts2_ui_enter(); ts2_menu_sprite(); sub_001B75A0_gen(); ts2_ui_leave(); }
 extern void sub_001B7450_gen(void);   /* PAL 0x001B7860, -0x410 */
 void sub_001B7450(void) { ts2_ui_enter(); sub_001B7450_gen(); ts2_ui_leave(); }
 extern void sub_001B7540_gen(void);   /* PAL 0x001B7950, -0x410 */
 void sub_001B7540(void) { ts2_ui_enter(); sub_001B7540_gen(); ts2_ui_leave(); }
 extern void sub_000AA5B0_gen(void);   /* PAL 0x000AA5F0, -0x40 */
-void sub_000AA5B0(void) { ts2_ui_enter(); sub_000AA5B0_gen(); ts2_ui_leave(); }
+void sub_000AA5B0(void) { ts2_ui_enter(); ts2_menu_sprite_id(); sub_000AA5B0_gen(); ts2_ui_leave(); }
 extern void sub_000AABB0_gen(void);   /* PAL 0x000AABF0, -0x40 */
 void sub_000AABB0(void) { ts2_ui_enter(); sub_000AABB0_gen(); ts2_ui_leave(); }
 extern void sub_000AA630_gen(void);   /* PAL 0x000AA670, -0x40 */
@@ -223,16 +223,68 @@ extern void sub_001AC910_gen(void);   /* PAL 0x001ACD50, -0x440 */
 void sub_001AC910(void) { ts2_ui_enter(); sub_001AC910_gen(); ts2_ui_leave(); }
 extern void sub_001AC990_gen(void);   /* PAL 0x001ACDD0, -0x440 */
 void sub_001AC990(void) { ts2_ui_enter(); sub_001AC990_gen(); ts2_ui_leave(); }
+/* The game's measure of a line of text (string) -> width: while the
+ * keyboard and mouse drive a menu, a line naming the pad's A or B is
+ * measured with the keys written in their place, as it is then drawn
+ * (ts2_key_text, src/ts2_menu_mouse.c), so the hint bar lays it out at its
+ * new width. PAL not checked. */
+extern void sub_001AC170_gen(void);
+void sub_001AC170(void) { ts2_key_text(sub_001AC170_gen, 1); }
 extern void sub_001AC9F0_gen(void);   /* PAL 0x001ACE30, -0x440 */
-void sub_001AC9F0(void) { ts2_ui_enter(); sub_001AC9F0_gen(); ts2_ui_leave(); }
+void sub_001AC9F0(void) { ts2_ui_enter(); ts2_menu_text(sub_001AC9F0_gen, TS2_TEXT_AT_ALIGN, ts2_ui_place_here()); ts2_ui_leave(); }
 extern void sub_001ACA50_gen(void);   /* PAL 0x001ACE90, -0x440 */
-void sub_001ACA50(void) { ts2_ui_enter(); sub_001ACA50_gen(); ts2_ui_leave(); }
+void sub_001ACA50(void) { ts2_ui_enter(); ts2_menu_text(sub_001ACA50_gen, TS2_TEXT_AT, ts2_ui_place_here()); ts2_ui_leave(); }
 extern void sub_001ACD10_gen(void);   /* PAL 0x001AD150, -0x440 */
-void sub_001ACD10(void) { ts2_ui_enter(); sub_001ACD10_gen(); ts2_ui_leave(); }
+void sub_001ACD10(void) { ts2_ui_enter(); ts2_menu_text(sub_001ACD10_gen, TS2_TEXT_AT_INT, ts2_ui_place_here()); ts2_ui_leave(); }
 extern void sub_001ACD90_gen(void);   /* PAL 0x001AD1D0, -0x440 */
 void sub_001ACD90(void) { ts2_ui_enter(); sub_001ACD90_gen(); ts2_ui_leave(); }
 extern void sub_001B7110_gen(void);   /* PAL 0x001B7520, -0x410 */
 void sub_001B7110(void) { ts2_ui_enter(); sub_001B7110_gen(); ts2_ui_leave(); }
+
+/* The menu pointer (src/ts2_menu_mouse.c) sees the menus drawn: the three
+ * text functions above (a button hint is text with a button glyph in it,
+ * \x0b1 B and \x0b2 A, wherever it is drawn: under a panel by
+ * sub_000EFEB0, inside one as an item, on a pause page), the sprite above
+ * (the pause pages' arrows, sub_000D1A00), and the four arrow sprites
+ * below, (x0, y0, x1, y1, colour), cdecl, each a call of sub_001B75A0 with
+ * its own corner of the sheet: right sub_000AA440 and left sub_000AA490
+ * (an option's value, from sub_000F1230; the controller screen,
+ * sub_000D0290), up sub_000AA4E0 and down sub_000AA530 (a scrolling pause
+ * page, from sub_000CCCB0). They are wrapped to light the one under the
+ * pointer and to say where they are; not as placement sites, so they leave
+ * the placement chain alone. */
+extern void sub_000AA440_gen(void);
+void sub_000AA440(void) { ts2_menu_arrow(TS2_ARROW_RIGHT); sub_000AA440_gen(); }
+extern void sub_000AA490_gen(void);
+void sub_000AA490(void) { ts2_menu_arrow(TS2_ARROW_LEFT); sub_000AA490_gen(); }
+extern void sub_000AA4E0_gen(void);
+void sub_000AA4E0(void) { ts2_menu_arrow(TS2_ARROW_UP); sub_000AA4E0_gen(); }
+extern void sub_000AA530_gen(void);
+void sub_000AA530(void) { ts2_menu_arrow(TS2_ARROW_DOWN); sub_000AA530_gen(); }
+/* The pause pages' prompts: a button's picture, sub_000AA360(x0, y0, x1,
+ * y1, icon, alpha) from xbbuttons.raw (icon 0 B, 1 A; "Select" at
+ * 0x000CD169, "Back" at 0x000CD01B), and the D-pad's, sub_000AB2A0(x, y,
+ * up, down, left, right), four 16-pixel pieces in a 40-pixel cross, a flag
+ * for each way that does something ("Change page" from sub_000D1C40,
+ * "Change item" from sub_000CD180). Wrapped so a click on one is that
+ * button or way, and while the keyboard and mouse drive the menu a
+ * button's picture is the key's name instead (ts2_menu_icon,
+ * ts2_menu_dpad in src/ts2_menu_mouse.c). Not placement sites. */
+extern void sub_000AA360_gen(void);
+void sub_000AA360(void) { ts2_menu_icon(sub_000AA360_gen); }
+extern void sub_000AB2A0_gen(void);
+void sub_000AB2A0(void) { ts2_menu_dpad(sub_000AB2A0_gen); }
+/* MapMaker's prompts: a button's picture by its corner, sub_000AA2F0(x, y,
+ * icon, lit), 24 by 22 (Y icon 2, B 0, X 3, A 1, in a diamond drawn by
+ * sub_00111F70). Wrapped as the pause pages' (ts2_menu_icon_at). */
+extern void sub_000AA2F0_gen(void);
+void sub_000AA2F0(void) { ts2_menu_icon_at(sub_000AA2F0_gen); }
+/* The letter picker's draw, sub_001AD350(player, ...): called only while a
+ * picker is shown (Enter Name, MapMaker's names, description and briefing),
+ * so it says one is up and whose, for the pointer to pick its cells
+ * (ts2_menu_picker). Not a placement site. */
+extern void sub_001AD350_gen(void);
+void sub_001AD350(void) { ts2_menu_picker(sub_001AD350_gen); }
 
 /* Where TimeSplitters 2 (USA, this XBE) draws what: the PAL table with each
  * site moved to the USA return address of the same call -- the shift of its

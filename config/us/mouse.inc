@@ -12,8 +12,9 @@ static const Ts2MouseAddrs k_ts2_mouse = {
      * player update are working on; look reads and writes only it. */
     0x00497100,
     /* level_id and the first value that is not a playable level, as the
-     * debugging tools have them (0x65 measured in the front end). */
-    0x004A46EC, 0x64,
+     * debugging tools have them (0x65 measured in the front end; 0x64 is
+     * a MapMaker map being played, see config/us/devtools.inc). */
+    0x004A46EC, 0x65,
     /* pitch_limit: look clamps P+0x14C to +-[0x00497104] when it is done
      * (measured 40 in Siberia). Look's turn rates are [0x00497138] and
      * [0x0049713C] (measured 160 and 80): it adds rate * P+0x8A8 * ctx+0x324

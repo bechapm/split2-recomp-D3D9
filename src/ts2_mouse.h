@@ -70,6 +70,7 @@ enum {
  * reads a neutral pad), look turns nothing by the mouse and leaves its
  * motion for whoever takes it (recomp_mouse_take). */
 void ts2_mouse_hold(int on);
+int  ts2_mouse_is_held(void);
 
 /* Once a frame, after the game's present. */
 void ts2_mouse_frame(void);
@@ -90,5 +91,65 @@ int ts2_mouse_turn(float *right, float *up);
  * the camera adds to the record at current_player's view): while player 1
  * aims, the sway is held at 0 without moving the view. */
 void ts2_mouse_breath(void (*breath)(void));
+
+/* The menus' own drawing, seen by the menu pointer (src/ts2_menu_mouse.c),
+ * which is how it knows where a button hint, an option's arrow or a page's
+ * arrow is this frame, and how what is under it is lit up. Each wraps one
+ * of the release's drawing functions (config/<region>/overrides.inc).
+ *
+ * Text: draw is the lifted body, form says how it takes its arguments
+ * (TS2_TEXT_*), place is the placement its call site has in widescreen
+ * (TS2_UI_*, -1 with widescreen off). It calls draw once, or once for each
+ * part of a line that has a hint lit and others not. */
+enum {
+    TS2_TEXT_AT_INT = 0,    /* (int *x, int *y, text, colour): x is moved past the text */
+    TS2_TEXT_AT_ALIGN = 1,  /* (float x, float y, wrap width, text, colour) */
+    TS2_TEXT_AT = 2,        /* (float x, float y, text, colour, ...) */
+};
+void ts2_menu_text(void (*draw)(void), int form, int place);
+
+/* An arrow sprite (x0, y0, x1, y1, colour), before its body runs: which way
+ * it points (TS2_ARROW_*). */
+enum { TS2_ARROW_RIGHT = 0, TS2_ARROW_LEFT, TS2_ARROW_UP, TS2_ARROW_DOWN };
+void ts2_menu_arrow(int dir);
+
+/* Any sprite (x0, y0, x1, y1, u0, v0, u1, v1, colour), before its body runs:
+ * the pause menu's page arrows are drawn as these. */
+void ts2_menu_sprite(void);
+
+/* A sprite by id (float x, float y, id, colour), before its body runs:
+ * MapMaker's tab arrows are drawn as these (sub_000AA5B0). */
+void ts2_menu_sprite_id(void);
+
+/* A button's picture (x0, y0, x1, y1, icon, alpha): icon 0 B, 1 A, 2 Y,
+ * 3 X, as the pause pages draw their prompts (sub_000AA360 in the USA
+ * release). Drawn by fn, or, while the keyboard and mouse drive a menu, as
+ * the key that does the same written in its place; and noted, so a click on
+ * it is that button. */
+void ts2_menu_icon(void (*fn)(void));
+
+/* The D-pad's picture (x, y, up, down, left, right), 40 pixels square, each
+ * way an alpha, brighter for a way that does something now (sub_000AB2A0):
+ * each such piece is noted, lit under the pointer, and a click on it is
+ * that way. */
+void ts2_menu_dpad(void (*fn)(void));
+
+/* A button's picture placed by its corner (x, y, icon, lit), 24 by 22, as
+ * MapMaker's prompts draw theirs (sub_000AA2F0): as ts2_menu_icon. */
+void ts2_menu_icon_at(void (*fn)(void));
+
+/* The letter picker's draw (sub_001AD350): notes that a picker is up, and
+ * whose, for the pointer to pick its cells. */
+void ts2_menu_picker(void (*fn)(void));
+
+/* src/recomp_manual.c: the widescreen placement (TS2_UI_*) for every site
+ * its table does not name, while MapMaker's editor is up; -1 for the
+ * usual. */
+void ts2_ui_area_default(int place);
+
+/* A lifted text function whose string is argument si (the game's measure
+ * of text, sub_001AC170 in the USA release): called with the pad's A and B
+ * written as Enter and Esc while the keyboard and mouse drive a menu. */
+void ts2_key_text(void (*fn)(void), int si);
 
 #endif
