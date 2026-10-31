@@ -61,6 +61,10 @@ int  ts2_mapmaker_editing(void);
 /* MapMaker's editor level is running, editor or one of its screens. */
 int  ts2_mapmaker_active(void);
 
+/* On a screen of rows, picks the row at height y (menu pixels), as the
+ * D-pad picks it: a row's arrow was pointed at. Returns its id, or 0. */
+int  ts2_mapmaker_pick_row_at(uint32_t top, float y);
+
 /* From the bindings filter, for controller 1. */
 void ts2_mapmaker_filter(XBOX_GAMEPAD *pad);
 

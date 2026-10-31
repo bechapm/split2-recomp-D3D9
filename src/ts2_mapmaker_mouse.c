@@ -78,7 +78,8 @@ static struct {
     volatile unsigned zoom_until;
     volatile int  stick_x, stick_y;   /* the edge's push, -32767..32767 */
     int      wheel;
-} MM = { .trigger = -1 };
+    int      mode_was;          /* the Mode question's line under the pointer last frame, or -1 */
+} MM = { .trigger = -1, .mode_was = -1 };
 
 static int mm_ptr_ok(uint32_t a)
 {
@@ -212,28 +213,85 @@ static int mm_hot_at(uint32_t s, float x, float y)
     return 0;
 }
 
-/* The line of the Mode question under (x, y), from 0, or -1: after its title
- * each hot spot is a line, or the same line again. */
+int ts2_mapmaker_pick_row_at(uint32_t top, float y)
+{
+    int n, k;
+    uint32_t hots;
+
+    if (!top || !ts2_mapmaker_active())
+        return 0;
+    n = M_MEMI(top + TS2_MS_HOT_COUNT);
+    hots = M_MEM32(top + TS2_MS_HOTS);
+    if (n <= 0 || n > 256 || !mm_ptr_ok(hots))
+        return 0;
+    for (k = 0; k < n; k++) {
+        uint32_t h = hots + (uint32_t)k * TS2_HOT_SIZE;
+        float hy = (float)M_MEM16(h + TS2_HOT_Y), hh = (float)M_MEM16(h + TS2_HOT_H);
+        uint16_t id = M_MEM16(h + TS2_HOT_ID);
+
+        if (M_MEM16(h + TS2_HOT_FLAGS) & 0x81)
+            continue;
+        if (y >= hy - 2.0f && y < hy + hh + 2.0f) {
+            if (M_MEM16(top + TS2_MS_HOT_PICKED) != id) {
+                M_MEM16(top + TS2_MS_HOT_PICKED) = id;
+                if (MM.log)
+                    fprintf(stderr, "[TS2-MAPMAKER] frame %u: a row's arrow picks row %u\n",
+                            MM.frame, (unsigned)id);
+            }
+            return id;
+        }
+    }
+    return 0;
+}
+
+/* The line of the Mode question under (x, y), from 0, or -1. After its
+ * title each hot spot is a line, or a piece of one at the same height: a
+ * line is its rank among the heights, top first, and it runs across the
+ * widest of them, from one line's top to the next's. Ranked, not counted
+ * in the order the spots come, and by bands with no gaps, so the line
+ * under a resting pointer is the same however the game lists or redraws
+ * them (the user saw it bounce between Beginner and Advanced). */
+#define MODE_LINES 8
+
 static int mm_mode_at(uint32_t s, float x, float y)
 {
-    int n = M_MEMI(s + TS2_MS_HOT_COUNT), k, row = -1;
-    uint32_t hots = M_MEM32(s + TS2_MS_HOTS), y_was = 0xFFFFFFFFu;
+    int n = M_MEMI(s + TS2_MS_HOT_COUNT), k, j, lines = 0;
+    uint32_t hots = M_MEM32(s + TS2_MS_HOTS);
+    float top[MODE_LINES], bottom[MODE_LINES], left = 1.0e9f, right = -1.0e9f;
 
-    if (n <= 1 || n > 16)
+    if (n <= 1 || n > 16 || !mm_ptr_ok(hots))
         return -1;
     for (k = 1; k < n; k++) {
         uint32_t h = hots + (uint32_t)k * TS2_HOT_SIZE;
         float hx = (float)M_MEM16(h + TS2_HOT_X), hy = (float)M_MEM16(h + TS2_HOT_Y);
+        float hb = hy + (float)M_MEM16(h + TS2_HOT_H), hr = hx + (float)M_MEM16(h + TS2_HOT_W);
 
-        if (M_MEM16(h + TS2_HOT_Y) != y_was) {
-            y_was = M_MEM16(h + TS2_HOT_Y);
-            row++;
+        if (hx < left)
+            left = hx;
+        if (hr > right)
+            right = hr;
+        for (j = 0; j < lines && top[j] != hy; j++)
+            ;
+        if (j == lines) {
+            if (lines == MODE_LINES)
+                continue;
+            /* In order of height. */
+            for (j = lines++; j > 0 && top[j - 1] > hy; j--) {
+                top[j] = top[j - 1];
+                bottom[j] = bottom[j - 1];
+            }
+            top[j] = hy;
+            bottom[j] = hb;
+        } else if (hb > bottom[j]) {
+            bottom[j] = hb;
         }
-        if (x >= hx && x < hx + (float)M_MEM16(h + TS2_HOT_W) && y >= hy &&
-            y < hy + (float)M_MEM16(h + TS2_HOT_H))
-            return row;
     }
-    return -1;
+    if (!lines || x < left - 4.0f || x >= right + 4.0f || y < top[0] - 2.0f ||
+        y >= bottom[lines - 1] + 2.0f)
+        return -1;
+    for (j = lines - 1; j > 0 && y < top[j]; j--)
+        ;
+    return j;
 }
 
 int ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y, int inside,
@@ -263,6 +321,7 @@ int ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y,
     mm_bounds(top, &l, &t, &r, &b);
 
     if (!top) {
+        MM.mode_was = -1;
         /* The editor. The hand follows the pointer, inside its limits. */
         if (inside && (moved || MM.frame < MM.zoom_until + GAP_FRAMES) && (hand & 2u))
             mm_hand_to(f, mm_clamp(x, l, r), mm_clamp(y, t, b));
@@ -337,8 +396,16 @@ int ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y,
          * D-pad picks it, and a click on it is A. */
         int row = inside ? mm_mode_at(top, x, y) : -1;
 
-        if (row >= 0 && (moved || left_down))
+        /* Written only when the line under the pointer changes, or on a
+         * press: the keys and the pad pick as before while it rests. */
+        if (row >= 0 && ((moved && row != MM.mode_was) || left_down) &&
+            M_MEMI(MA->mode_row) != row) {
             M_MEMI(MA->mode_row) = row;
+            if (MM.log)
+                fprintf(stderr, "[TS2-MAPMAKER] frame %u: the pointer picks Mode line %d\n",
+                        MM.frame, row);
+        }
+        MM.mode_was = row;
         if (left_down && !menu_took_press)
             MM.armed = row + 1;
         if (left_up) {
@@ -348,6 +415,7 @@ int ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y,
         }
         return 1;
     }
+    MM.mode_was = -1;
     if (hand & 2u) {
         /* A screen with the hand (the palette): the hand follows the
          * pointer, the game picks what it is over (hot spots, F+0x18 bit 1),

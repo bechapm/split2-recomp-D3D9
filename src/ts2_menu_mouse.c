@@ -697,6 +697,16 @@ void ts2_menu_arrow(int dir)
     } else if (ret >= A->scroll_draw && ret < A->scroll_draw_end) {
         kind = DR_SCROLL;
         place = TS2_PLACE_AUTO;
+    } else if (ts2_mapmaker_active() && (dir == TS2_ARROW_LEFT || dir == TS2_ARROW_RIGHT)) {
+        /* MapMaker's screens of rows (Map Settings, Editor Settings): an
+         * arrow beside a row's value. A click picks its row and is the
+         * D-pad's left or right, which steps the value (Drawn button 1: a
+         * row's arrow, not a page's). */
+        n_corners(a + 4, &x0, &y0, &x1, &y1);
+        n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, dir == TS2_ARROW_LEFT ? -1 : 1, 1, x0, y0, x1, y1);
+        if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 4.0f))
+            N_MEM32(a + 20) = n_lit(N_MEM32(a + 20));
+        return;
     } else {
         return;
     }
@@ -1262,7 +1272,7 @@ static void n_text_parts(void (*draw)(void), int form, int si, int ci, uint32_t 
 static void n_menu_text(void (*draw)(void), int form, int place)
 {
     uint32_t a = g_esp, str, len, k, hot0 = 0, hot1 = 0;
-    int si = form == TS2_TEXT_AT_ALIGN ? 4 : 3, ci = si + 1, hot = 0;
+    int si = form == TS2_TEXT_AT_ALIGN ? 4 : 3, ci = si + 1, hot = 0, prompts = 0;
     float x, y, h;
 
     if (!N.want || !A->frontend || !A->text_width) {
@@ -1328,6 +1338,14 @@ static void n_menu_text(void (*draw)(void), int form, int place)
     }
     for (len = 0; len < 0x7F && N_MEM8(str + len); len++)
         ;
+    /* Y's and X's hints (\x0b3, \x0b4: Select Level's "View briefing")
+     * count in the front end, and in a level on a line of prompts, one with
+     * A's or B's too; alone there, the picture is a pad's legend (the pause
+     * menu's Controls page), and nothing to click. */
+    prompts = !A->level_id || N_MEM32(A->level_id) >= A->level_menus;
+    for (k = 0; k + 1 < len; k++)
+        if (N_MEM8(str + k) == 0x0B && (N_MEM8(str + k + 1u) == '1' || N_MEM8(str + k + 1u) == '2'))
+            prompts = 1;
     /* Each hint runs from a button glyph (\x0b and a digit) to the next. */
     for (k = 0; k + 1 < len; k++) {
         uint32_t e, t;
@@ -1338,7 +1356,7 @@ static void n_menu_text(void (*draw)(void), int form, int place)
         if (N_MEM8(str + k) != 0x0B)
             continue;
         g = N_MEM8(str + k + 1u);
-        button = g == '1' ? 1 : g == '2' ? 2 : 0;
+        button = g == '1' ? 1 : g == '2' ? 2 : !prompts ? 0 : g == '3' ? 3 : g == '4' ? 4 : 0;
         for (e = k + 2u; e < len && N_MEM8(str + e) != 0x0B; e++)
             ;
         if (button) {
@@ -1883,6 +1901,13 @@ void ts2_menu_frame(void)
         if (d && d->kind == DR_PAGE) {
             cur.kind = T_PAGE;
             cur.dir = d->dir;
+            /* A row's arrow: the row at its height is picked under it, so
+             * the D-pad steps that row's value. */
+            if (d->button == 1) {
+                cur.row = (int)((d->y0 + d->y1) * 0.5f);
+                if (moved || (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)))
+                    ts2_mapmaker_pick_row_at(top, (float)cur.row);
+            }
         } else if (d && d->kind == DR_HINT) {
             cur.kind = T_HINT;
             cur.button = d->button;
