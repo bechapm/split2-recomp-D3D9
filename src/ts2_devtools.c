@@ -6,7 +6,7 @@
  * world holds still and is still drawn), a readout of where the player is,
  * a saved position to come back to, a free camera, noclip, the game's
  * speed and a wireframe view, all from a menu on the overlay. All of it is
- * TS2's: the toolkit only gives keys, lines on its overlay
+ * TS2's: the toolkit only gives the keyboard, lines on its overlay
  * (xbox_D3D8KeyDown, xbox_D3D8Notice), the pad (xbox_InputWithhold,
  * xbox_InputRead) and the wireframe (xbox_D3D8SetWireframe).
  *
@@ -18,11 +18,11 @@
  * Every tool starts off. The switches (each a setting in the title's .conf
  * or an environment variable, read once at start-up):
  *
- *   ts2_dev = 0            RECOMP_TS2_DEV          no menu and no keys (on by default)
+ *   ts2_dev = 0            RECOMP_TS2_DEV          no menu (on by default)
  *   ts2_god = 1            RECOMP_TS2_GOD          god mode from the start
  *   ts2_infinite_ammo = 1  RECOMP_TS2_INFINITE_AMMO
  *   ts2_unlock_all = 1     RECOMP_TS2_UNLOCK_ALL   every character, level and cheat
- *   ts2_invisible = 1      RECOMP_TS2_INVISIBLE    enemies cannot see the player
+ *   ts2_invisible = 1      RECOMP_TS2_INVISIBLE    enemies and cameras cannot see the player
  *   ts2_readout = 1        RECOMP_TS2_READOUT      the readout from the start: the
  *                          position, what the middle of the view is on (the
  *                          game's own ray: point, distance, room, door,
@@ -30,7 +30,7 @@
  *                          tools are on
  *   ts2_speed = 0.5        RECOMP_TS2_SPEED        the game's speed: 0.25 0.5 1 2 4
  *   ts2_dev_seq = <frame>:<action>,...  RECOMP_TS2_DEV_SEQ
- *                          the keys' actions at given frames (from the first
+ *                          the menu's actions at given frames (from the first
  *                          present), for scripted runs: readout god ammo
  *                          unlock save load freecam noclip freeze step
  *                          invisible wireframe faster slower menu hud give
@@ -40,18 +40,14 @@
  *   ts2_teleport = x,y,z[,yaw,pitch]  RECOMP_TS2_TELEPORT
  *                          where the player is put once the first level is
  *                          playing: a repeatable spot for a scripted run
+ *   ts2_room_culling = auto|off|on  RECOMP_TS2_ROOM_CULLING
+ *                          auto (the default): the game's room culling,
+ *                          off while the free camera or noclip is on; off:
+ *                          every room drawn all the time; on: the game's
+ *                          culling even with those tools
  *
- * Shortcut keys for the menu's items (only while the game's window is in
- * front):
- *
- *   F1  the menu           F2  god mode        F3  infinite ammo
- *   F4  invisible to enemies                   Home  unlock everything
- *   F5  save position      F6  back to the saved position
- *   F7  free camera        F8  noclip          F12 or Pause: stop the clock
- *   Page Down: one frame forward while the clock is stopped
- *   End  wireframe (the toolkit's, RECOMP_WIREFRAME)
- *   Insert  the game's HUD on and off
- *   - and +  slower and faster
+ * F1 is the only key of its own (while the game's window is in front):
+ * every tool is a row of the menu.
  *
  * Saved positions are kept per level in ts2_positions.txt beside the
  * executable (RECOMP_TS2_POSITIONS names another file), one line each:
@@ -92,13 +88,31 @@
  *     they reach the player. And because awareness, once set, is kept with
  *     no ray at all, the game's awareness of the players is held at
  *     "unaware" (written and read), and an enemy whose target is the player
- *     loses it. Security cameras, alarms and sensors are not covered yet.
+ *     loses it. A security camera or wall gun answers for itself
+ *     (sub_0015DA10, wrapped): no, for the player. The game's own cloak goes
+ *     on with no time limit, as the AI cloaks itself: it is what bots' target
+ *     scans skip, and what shows, but story enemies and cameras never read it.
+ *     An alarm a level's script raises by itself is not covered.
  *   free camera: the eye and direction the camera update hands its
  *     look-at, replaced at that one call, and the room drawing starts from
  *     found by the portal walk, so the view, everything made from it and
  *     what graphics tools are given all follow, and rooms are drawn from
- *     where the camera is. The pad (and the keyboard) drive the camera while
+ *     where the camera is. The visibility pass judges each portal from the
+ *     context's own eye, which the look-at's copy leaves at the player's
+ *     head; the camera's is put there for that pass, or rooms vanished the
+ *     further the camera flew from the player. The pad (and the keyboard) drive the camera while
  *     it is on, and the game reads a neutral pad.
+ *   room culling: the game draws only the rooms its camera can see through
+ *     a chain of portals (doorways, windows, gaps), each where that chain
+ *     shows it on screen, and a room's objects only where their boxes fall
+ *     in it. Played normally nobody sees it; from a free camera or through a
+ *     wall, whole rooms are missing. Off, the visibility pass runs as ever,
+ *     then every room is marked seen across the whole screen, numbered by
+ *     how many portals away it is (the draw's order, near to far for the
+ *     solid pass and far to near for the see-through one). Some levels
+ *     reuse one space for two rooms that are never seen together (Siberia's
+ *     lowest tunnel and the room above it), and with culling off both are
+ *     drawn there: why off is only the default while those tools are on.
  *   HUD: the game's HUD draw (all of it: health, ammunition, the radar, the
  *     crosshair, messages) returns at once. The gun in hand stays. A HUD
  *     flash or message waiting meanwhile shows when it is back.
@@ -147,14 +161,12 @@ extern int         xbox_InputRead(unsigned port, uint16_t *buttons, uint8_t anal
 #define DEV_MEMF(a)  (*(volatile float *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 #define DEV_MEM8(a)  (*(volatile uint8_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 #define DEV_MEM16(a) (*(volatile uint16_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
+#define DEV_RADIANS  0.017453292f   /* a degree */
 
 /* Windows virtual-key codes (the toolkit translates them off Windows). */
 enum {
-    VK_F1_ = 0x70, VK_F2_, VK_F3_, VK_F4_, VK_F5_, VK_F6_, VK_F7_, VK_F8_,
-    VK_F12_ = 0x7B, VK_PAUSE_ = 0x13, VK_NEXT_ = 0x22, VK_SHIFT_ = 0x10,
-    VK_SPACE_ = 0x20, VK_CONTROL_ = 0x11, VK_HOME_ = 0x24, VK_END_ = 0x23,
-    VK_RETURN_ = 0x0D, VK_ESCAPE_ = 0x1B, VK_MINUS_ = 0xBD, VK_PLUS_ = 0xBB,
-    VK_SUBTRACT_ = 0x6D, VK_ADD_ = 0x6B, VK_INSERT_ = 0x2D,
+    VK_F1_ = 0x70, VK_SHIFT_ = 0x10, VK_SPACE_ = 0x20, VK_CONTROL_ = 0x11,
+    VK_RETURN_ = 0x0D, VK_ESCAPE_ = 0x1B,
     VK_LEFT_ = 0x25, VK_UP_, VK_RIGHT_, VK_DOWN_,
 };
 
@@ -173,12 +185,20 @@ static const float k_dev_speeds[] = { 0.25f, 0.5f, 1.0f, 2.0f, 4.0f };
 
 static const Ts2DevAddrs *A = &k_ts2_dev;
 
+/* Room culling: the game's own except while the free camera or noclip is
+ * on (auto), never (off: every room drawn), or always (on). */
+enum { DEV_CULL_AUTO, DEV_CULL_OFF, DEV_CULL_ON, DEV_CULL_COUNT };
+static const char *const k_dev_cull_names[DEV_CULL_COUNT] = { "auto", "off", "on" };
+
 static struct {
     int  configured, keys, readout;
     int  god, ammo, unlock;            /* what the player asked for */
     int  god_written, ammo_written, unlock_written;
     int  frozen, step, freecam, noclip, invisible;
     int  hud_off;                       /* the game's HUD not drawn */
+    int  culling;                       /* room culling: DEV_CULL_* */
+    int  culling_said;                  /* the log has said it drew every room */
+    int  cloaked;                       /* the tools turned the game's cloak on */
     int  item;                          /* what "Give item" gives */
     int  god_hold;                      /* frames god stays on after noclip */
     int  speed;                         /* index in k_dev_speeds */
@@ -644,12 +664,15 @@ static void dev_freecam_forward(float f[3])
 static void dev_freecam_step(void)
 {
     const float turn_rate = 2.2f;       /* radians a second at full stick */
-    float move[3], turn[2], speed, f[3], a, c, s, h[3], r[3];
+    float move[3], turn[2], mouse[2], speed, f[3], a, c, s, h[3], r[3];
     float step = 6.0f * TS2_FRAME_SECONDS;
     int i;
 
     dev_freecam_input(move, turn, &speed);
-    a = turn[0] * turn_rate * TS2_FRAME_SECONDS;
+    /* The mouse turns it as it turns the player: so many degrees a count,
+     * not a speed (look leaves the motion while the camera is up). */
+    ts2_mouse_turn(&mouse[0], &mouse[1]);
+    a = turn[0] * turn_rate * TS2_FRAME_SECONDS + mouse[0] * DEV_RADIANS;
     if (a != 0.0f) {
         c = cosf(a);
         s = sinf(a);
@@ -662,7 +685,7 @@ static void dev_freecam_step(void)
         dev_normalize(D.fc_fwd_h);
         dev_normalize(D.fc_right);
     }
-    D.fc_pitch += turn[1] * turn_rate * TS2_FRAME_SECONDS;
+    D.fc_pitch += turn[1] * turn_rate * TS2_FRAME_SECONDS + mouse[1] * DEV_RADIANS;
     if (D.fc_pitch > 1.5f) D.fc_pitch = 1.5f;
     if (D.fc_pitch < -1.5f) D.fc_pitch = -1.5f;
 
@@ -807,6 +830,21 @@ void ts2_dev_aware_get(void (*get)(void))
 /* check(R, refresh): whether an enemy's target R+0x1300 is still one. Under
  * invisibility an enemy whose target is the player has none, and the game's
  * own check then says so. */
+/* sees(chr) answers for a security camera or wall gun: under invisibility,
+ * no for the player, as the game's own debug switch [0x356894] answers for
+ * everyone. It pops its return address as its own ret would. */
+void ts2_dev_remote_sees(void (*sees)(void))
+{
+    uint32_t c = D.invisible ? dev_chr(dev_player()) : 0;
+
+    if (c && DEV_MEM32(g_esp + 4) == c) {
+        g_eax = 0;
+        g_esp += 4;
+        return;
+    }
+    sees();
+}
+
 void ts2_dev_target_check(void (*check)(void))
 {
     uint32_t r = DEV_MEM32(g_esp + 4), c;
@@ -964,6 +1002,110 @@ void ts2_dev_look_at(void (*look_at)(void))
         DEV_MEM32(ctx + TS2_CTX_ROOM) = (uint32_t)D.fc_room;
     }
     look_at();
+}
+
+/* Room culling is off now: always, or (auto) while the free camera or noclip
+ * is on. */
+static int dev_culling_off(void)
+{
+    return D.culling == DEV_CULL_OFF ||
+           (D.culling == DEV_CULL_AUTO && (D.freecam || D.noclip));
+}
+
+/* Room culling off: every room 1..n marked seen, across the whole screen,
+ * numbered by how many portals away it is from the camera's room (a walk
+ * through every portal, closed doors and all; a room no walk reaches comes
+ * after the farthest). The draw sorts the rooms by that number: near to
+ * far for the solid pass, far to near for the see-through one. */
+static void dev_all_rooms(uint32_t ctx)
+{
+    uint32_t rooms, portals, vp, n, start, r, i, count, list, portal, other;
+    uint8_t depth[TS2_ROOMS_MAX + 1], queue[TS2_ROOMS_MAX + 1];
+    int head = 0, tail = 0, deepest = 0, d;
+    int16_t left, right, top, bottom;
+
+    if (!A->rooms || !A->room_count || !A->portals || !A->viewport)
+        return;
+    rooms = DEV_MEM32(A->rooms);
+    portals = DEV_MEM32(A->portals);
+    vp = DEV_MEM32(A->viewport);
+    n = DEV_MEM32(A->room_count);
+    if (!dev_ptr_ok(rooms) || !dev_ptr_ok(portals) || !dev_ptr_ok(vp) ||
+        n < 1 || n > TS2_ROOMS_MAX)
+        return;
+    memset(depth, 0xFF, sizeof depth);
+    start = DEV_MEM32(ctx + TS2_CTX_ROOM);
+    if (start >= 1 && start <= n) {
+        depth[start] = 0;
+        queue[tail++] = (uint8_t)start;
+    }
+    while (head < tail) {
+        r = queue[head++];
+        list = DEV_MEM32(rooms + r * TS2_ROOM_STRIDE + TS2_ROOM_PORTALS);
+        if (!dev_ptr_ok(list))
+            continue;
+        count = DEV_MEM32(list);
+        for (i = 0; i < count && i < 256; i++) {
+            portal = DEV_MEM32(portals + 4u * DEV_MEM32(list + 4u + 4u * i));
+            if (!dev_ptr_ok(portal))
+                continue;
+            other = DEV_MEM32(portal) == r ? DEV_MEM32(portal + 4) : DEV_MEM32(portal);
+            if (other < 1 || other > n || depth[other] != 0xFF)
+                continue;
+            d = depth[r] + 1;
+            depth[other] = (uint8_t)(d < TS2_SEEN_DEPTH_MAX ? d : TS2_SEEN_DEPTH_MAX);
+            if (depth[other] > deepest)
+                deepest = depth[other];
+            queue[tail++] = (uint8_t)other;
+        }
+    }
+    if (tail < (int)n && deepest < TS2_SEEN_DEPTH_MAX)
+        deepest++;                      /* the rooms no walk reached */
+    left = (int16_t)DEV_MEM32(vp + 0x00);
+    right = (int16_t)DEV_MEM32(vp + 0x04);
+    top = (int16_t)DEV_MEM32(vp + 0x14);
+    bottom = (int16_t)DEV_MEM32(vp + 0x18);
+    for (r = 1; r <= n; r++) {
+        uint32_t seen = ctx + TS2_CTX_SEEN + 12u * r;
+
+        DEV_MEM32(seen) = depth[r] != 0xFF ? depth[r] : (uint32_t)deepest;
+        DEV_MEM16(seen + 4) = (uint16_t)left;
+        DEV_MEM16(seen + 6) = (uint16_t)top;
+        DEV_MEM16(seen + 8) = (uint16_t)right;
+        DEV_MEM16(seen + 10) = (uint16_t)bottom;
+    }
+    DEV_MEM32(ctx + TS2_CTX_SEEN_DEEPEST) = (uint32_t)deepest;
+    if (!D.culling_said) {
+        D.culling_said = 1;
+        fprintf(stderr, "[TS2-DEV] room culling off: drawing all %u rooms, %d of them "
+                "reached through portals from room %u, %d deep\n",
+                (unsigned)n, tail, (unsigned)start, deepest);
+    }
+}
+
+/* The visibility pass, which takes no arguments: judged from the free
+ * camera's eye while it is on (the context's eye is the player's: the
+ * look-at was handed the camera's as a copy), and with room culling off
+ * every room drawn after it. */
+void ts2_dev_visibility(void (*visibility)(void))
+{
+    uint32_t ctx = dev_context();
+    float eye[3];
+    int i, swap = D.freecam && ctx;
+
+    if (swap)
+        for (i = 0; i < 3; i++) {
+            eye[i] = DEV_MEMF(ctx + TS2_CTX_EYE + 4u * (uint32_t)i);
+            DEV_MEMF(ctx + TS2_CTX_EYE + 4u * (uint32_t)i) = D.fc_eye[i];
+        }
+    visibility();
+    if (swap)
+        for (i = 0; i < 3; i++)
+            DEV_MEMF(ctx + TS2_CTX_EYE + 4u * (uint32_t)i) = eye[i];
+    if (ctx && dev_culling_off() && dev_in_level())
+        dev_all_rooms(ctx);
+    else
+        D.culling_said = 0;
 }
 
 /* hud() draws the in-game HUD, and takes no arguments: hidden, it returns
@@ -1183,11 +1325,34 @@ static void dev_give(uint32_t p)
 
 /* ── once a frame ──────────────────────────────────────────── */
 
-/* What a key (or a step of ts2_dev_seq) does. */
+/* The game's own cloak follows invisibility: on while it is, back on if a
+ * respawn or a new level cleared it, and off once with it. */
+static void dev_cloak(void)
+{
+    uint32_t r = dev_record(dev_player()), on;
+
+    if (!A->cloak_on || !r || !dev_in_level())
+        return;
+    on = DEV_MEM32(r + TS2_R_STATUS + 4) & TS2_STATUS_CLOAK;
+    if (D.invisible && !on) {
+        uint32_t status = r + TS2_R_STATUS;
+
+        dev_guest_call(A->cloak_on, dev_scratch(0), &status, 1);
+        D.cloaked = 1;
+    } else if (!D.invisible && on && D.cloaked) {
+        uint32_t status = r + TS2_R_STATUS;
+
+        dev_guest_call(A->cloak_off, dev_scratch(0), &status, 1);
+        D.cloaked = 0;
+    }
+}
+
+/* What a row of the menu (or a step of ts2_dev_seq) does. */
 enum {
     ACT_READOUT, ACT_GOD, ACT_AMMO, ACT_UNLOCK, ACT_SAVE, ACT_LOAD,
     ACT_FREECAM, ACT_NOCLIP, ACT_FREEZE, ACT_STEP, ACT_INVISIBLE, ACT_WIREFRAME,
     ACT_FASTER, ACT_SLOWER, ACT_MENU, ACT_HUD, ACT_GIVE, ACT_ITEM_NEXT, ACT_ITEM_PREV,
+    ACT_CULLING, ACT_CULLING_PREV,
     ACT_COUNT
 };
 
@@ -1195,6 +1360,7 @@ static const char *const k_dev_actions[ACT_COUNT] = {
     "readout", "god", "ammo", "unlock", "save", "load",
     "freecam", "noclip", "freeze", "step", "invisible", "wireframe",
     "faster", "slower", "menu", "hud", "give", "itemnext", "itemprev",
+    "culling", "cullingprev",
 };
 
 static void dev_action(int act, uint32_t p)
@@ -1273,7 +1439,7 @@ static void dev_action(int act, uint32_t p)
             dev_say("stop the clock: not found in this release");
         } else {
             dev_freeze(!D.frozen);
-            dev_say(D.frozen ? "clock STOPPED (Page Down: one frame)" : "clock running");
+            dev_say(D.frozen ? "clock STOPPED" : "clock running");
         }
         break;
     case ACT_STEP:
@@ -1315,33 +1481,24 @@ static void dev_action(int act, uint32_t p)
             D.item = (D.item + (act == ACT_ITEM_NEXT ? 1 : n - 1)) % n;
         }
         break;
+    case ACT_CULLING:
+    case ACT_CULLING_PREV:
+        D.culling = (D.culling + (act == ACT_CULLING ? 1 : DEV_CULL_COUNT - 1)) % DEV_CULL_COUNT;
+        D.culling_said = 0;
+        dev_say(D.culling == DEV_CULL_AUTO ? "room culling: auto (off with free camera, noclip)" :
+                D.culling == DEV_CULL_OFF ? "room culling OFF: every room drawn" :
+                "room culling on: the game's, always");
+        break;
     case ACT_INVISIBLE:
         D.invisible = !D.invisible;
+        dev_cloak();
         dev_say(A->sight_returns[0] ? "invisible to enemies %s" : "invisible: not found",
                 D.invisible ? "ON" : "off");
         break;
     }
 }
 
-static void dev_keys(uint32_t p)
-{
-    static const struct { int vk, act; } keys[] = {
-        { VK_F1_, ACT_MENU },    { VK_F2_, ACT_GOD },     { VK_F3_, ACT_AMMO },
-        { VK_F4_, ACT_INVISIBLE }, { VK_HOME_, ACT_UNLOCK },
-        { VK_F5_, ACT_SAVE },    { VK_F6_, ACT_LOAD },
-        { VK_F7_, ACT_FREECAM }, { VK_F8_, ACT_NOCLIP },  { VK_F12_, ACT_FREEZE },
-        { VK_PAUSE_, ACT_FREEZE }, { VK_NEXT_, ACT_STEP }, { VK_END_, ACT_WIREFRAME },
-        { VK_MINUS_, ACT_SLOWER }, { VK_SUBTRACT_, ACT_SLOWER },
-        { VK_PLUS_, ACT_FASTER },  { VK_ADD_, ACT_FASTER }, { VK_INSERT_, ACT_HUD },
-    };
-    size_t i;
-
-    for (i = 0; i < sizeof keys / sizeof keys[0]; i++)
-        if (dev_pressed(keys[i].vk))
-            dev_action(keys[i].act, p);
-}
-
-/* ts2_dev_seq = "<frame>:<action>,...": the keys' actions at given frames,
+/* ts2_dev_seq = "<frame>:<action>,...": the menu's actions at given frames,
  * counted from the first present, for scripted runs (which cannot press a
  * key: their window is never in front). */
 static struct { unsigned long frame; int act; } g_dev_seq[64];
@@ -1407,6 +1564,14 @@ static void dev_configure(void)
     D.readout = recomp_config_bool("RECOMP_TS2_READOUT", "ts2_readout", 0);
     D.invisible = recomp_config_bool("RECOMP_TS2_INVISIBLE", "ts2_invisible", 0);
     D.hud_off = !recomp_config_bool("RECOMP_TS2_HUD", "ts2_hud", 1);
+    v = recomp_config_lookup("RECOMP_TS2_ROOM_CULLING", "ts2_room_culling");
+    if (v && *v) {
+        int c;
+
+        for (c = 0; c < DEV_CULL_COUNT; c++)
+            if (!strcmp(v, k_dev_cull_names[c]))
+                D.culling = c;
+    }
     v = recomp_config_lookup("RECOMP_TS2_GIVE_ITEM", "ts2_give_item");
     if (v && *v && A->item_count)
         D.item = (int)((unsigned)atoi(v) % A->item_count);
@@ -1414,11 +1579,11 @@ static void dev_configure(void)
     v = recomp_config_lookup("RECOMP_TS2_TELEPORT", "ts2_teleport");
     if (v && *v)
         D.start_tp_pending = dev_parse_spot(v, D.start_tp, &D.start_tp_angles);
-    fprintf(stderr, "[TS2-DEV] menu and keys %s (F1 or L3+R3: the menu), god %d, "
-            "infinite ammo %d, unlock all %d, invisible %d, readout %d, HUD %d, speed %gx%s "
-            "(src/ts2_devtools.c, docs/devtools.md)\n",
+    fprintf(stderr, "[TS2-DEV] menu %s (F1 or L3+R3), god %d, "
+            "infinite ammo %d, unlock all %d, invisible %d, readout %d, HUD %d, speed %gx, "
+            "room culling %s%s (src/ts2_devtools.c, docs/devtools.md)\n",
             D.keys ? "on" : "off (ts2_dev = 0)", D.god, D.ammo, D.unlock, D.invisible,
-            D.readout, !D.hud_off, (double)k_dev_speeds[D.speed],
+            D.readout, !D.hud_off, (double)k_dev_speeds[D.speed], k_dev_cull_names[D.culling],
             D.start_tp_pending ? ", teleport at the first level" : "");
 }
 
@@ -1529,6 +1694,7 @@ static const struct { const char *label; int act, left, right; } k_dev_menu[] = 
     { "One frame forward",        ACT_STEP,      -1, -1 },
     { "Free camera",              ACT_FREECAM,   -1, -1 },
     { "Noclip",                   ACT_NOCLIP,    -1, -1 },
+    { "Room culling",             ACT_CULLING,   ACT_CULLING_PREV, ACT_CULLING },
     { "Save position",            ACT_SAVE,      -1, -1 },
     { "Back to saved position",   ACT_LOAD,      -1, -1 },
     { "Wireframe",                ACT_WIREFRAME, -1, -1 },
@@ -1564,6 +1730,9 @@ static const char *dev_menu_value(int row, char *buf, size_t n)
     }
     case ACT_FASTER:
         snprintf(buf, n, "< %gx >", (double)k_dev_speeds[D.speed]);
+        return buf;
+    case ACT_CULLING:
+        snprintf(buf, n, "< %s >", k_dev_cull_names[D.culling]);
         return buf;
     default:
         return "";
@@ -1640,7 +1809,7 @@ static size_t dev_menu_text(char *out, size_t n, int footer)
     return k < n ? k : n - 1;
 }
 
-/* The overlay's line: the readout, then the last thing a key did. */
+/* The overlay's line: the readout, then the last thing a tool said. */
 static void dev_show(uint32_t p)
 {
     char line[1200];
@@ -1666,10 +1835,11 @@ static void dev_show(uint32_t p)
             dev_aim(line + n, sizeof line - n);
         n = strlen(line);
         if (n < sizeof line)
-            n += (size_t)snprintf(line + n, sizeof line - n, "%s%s%s%s%s%s%s",
+            n += (size_t)snprintf(line + n, sizeof line - n, "%s%s%s%s%s%s%s%s",
                                   D.god || D.noclip ? "\nGOD " : "\n",
                                   D.ammo ? "AMMO " : "", D.invisible ? "INVISIBLE " : "",
                                   D.noclip ? "NOCLIP " : "", D.freecam ? "FREECAM " : "",
+                                  dev_culling_off() ? "ALLROOMS " : "",
                                   D.hud_off ? "NOHUD " : "", D.frozen ? "STOPPED" : "");
     } else if (D.readout) {
         n = (size_t)snprintf(line, sizeof line, "level %u",
@@ -1718,6 +1888,15 @@ static void dev_withhold(void)
     }
 }
 
+/* Asked as the first pak is mounted, which can come before the first
+ * present. */
+int ts2_dev_gives_guns(void)
+{
+    if (!D.configured)
+        dev_configure();
+    return D.keys && A->give_item != NULL;
+}
+
 void ts2_dev_frame(void)
 {
     uint32_t p;
@@ -1737,7 +1916,8 @@ void ts2_dev_frame(void)
         if (thumbs && !thumbs_were)
             dev_action(ACT_MENU, p);
         thumbs_were = thumbs;
-        dev_keys(p);
+        if (dev_pressed(VK_F1_))
+            dev_action(ACT_MENU, p);
         if (D.menu)
             dev_menu_input(p);
     }
@@ -1754,6 +1934,7 @@ void ts2_dev_frame(void)
         dev_say("teleported (ts2_teleport)");
     }
 
+    dev_cloak();
     dev_write_switches();
     dev_write_clock();
     if (D.freecam && !D.menu)

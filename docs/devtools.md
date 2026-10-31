@@ -3,11 +3,11 @@
 Tools for setting up a test scene and holding it still: god mode, infinite
 ammo, invisibility to enemies, every unlock, stopping the game's clock or
 changing its speed, a readout of where you are and what the crosshair is
-on, saving and returning to a position, a free camera, noclip, a
-wireframe view, hiding the HUD and giving yourself any weapon or item, all
+on, saving and returning to a position, a free camera, noclip, room
+culling switched off, a wireframe view, hiding the HUD and giving yourself any weapon or item, all
 from a menu on screen. They are TimeSplitters 2's own
-(`src/ts2_devtools.c`); the toolkit only supplies keys, the overlay's lines
-and the pad. USA release only for now, apart from unlock everything, which
+(`src/ts2_devtools.c`); the toolkit only supplies the keyboard, the overlay's
+lines and the pad. USA release only for now, apart from unlock everything, which
 PAL has too.
 
 ## The menu
@@ -15,7 +15,7 @@ PAL has too.
 **F1**, or both sticks clicked in together (**L3+R3**), opens and closes it.
 Up and down (the D-pad, the left stick or the arrow keys) choose a row, **A**
 or **Enter** sets it, left and right change a value (the game speed, the
-item to give), **B**
+item to give, room culling), **B**
 or **Esc** closes. The game reads an idle controller while the menu is open.
 Choosing the free camera or noclip closes the menu, so the controller drives
 them.
@@ -32,6 +32,7 @@ TS2 DEV MENU
   One frame forward
   Free camera              off
   Noclip                   off
+  Room culling             < auto >
   Save position
   Back to saved position
   Wireframe                off
@@ -48,49 +49,44 @@ per line, or set the environment variable beside it:
 
 | Setting | Environment variable | What it does |
 | --- | --- | --- |
-| `ts2_dev = 0` | `RECOMP_TS2_DEV` | No menu and no keys (they are on by default) |
+| `ts2_dev = 0` | `RECOMP_TS2_DEV` | No menu (it is on by default) |
 | `ts2_god = 1` | `RECOMP_TS2_GOD` | God mode from the start |
 | `ts2_infinite_ammo = 1` | `RECOMP_TS2_INFINITE_AMMO` | Infinite ammo from the start |
-| `ts2_invisible = 1` | `RECOMP_TS2_INVISIBLE` | Enemies cannot see you |
+| `ts2_invisible = 1` | `RECOMP_TS2_INVISIBLE` | Enemies, security cameras and wall guns cannot see you |
 | `ts2_unlock_all = 1` | `RECOMP_TS2_UNLOCK_ALL` | Every character, level and cheat |
 | `ts2_readout = 1` | `RECOMP_TS2_READOUT` | The readout from the start |
 | `ts2_speed = 0.5` | `RECOMP_TS2_SPEED` | The game's speed: 0.25, 0.5, 1, 2 or 4 |
 | `ts2_hud = 0` | `RECOMP_TS2_HUD` | The game's HUD hidden from the start |
 | `ts2_give_item = 11` | `RECOMP_TS2_GIVE_ITEM` | The item "Give item" starts on (its number in the game's item list) |
 | `ts2_teleport = x,y,z[,yaw,pitch]` | `RECOMP_TS2_TELEPORT` | Where you are put once the first level is playing |
-| `ts2_dev_seq = FRAME:ACTION,...` | `RECOMP_TS2_DEV_SEQ` | The keys' actions at given frames (below) |
+| `ts2_room_culling = auto` | `RECOMP_TS2_ROOM_CULLING` | Room culling: `auto` (the default) is the game's own, switched off while the free camera or noclip is on; `off` draws every room all the time; `on` keeps the game's even with those tools |
+| `ts2_dev_seq = FRAME:ACTION,...` | `RECOMP_TS2_DEV_SEQ` | The menu's actions at given frames (below) |
 | | `RECOMP_TS2_POSITIONS` | Where saved positions are kept (default `ts2_positions.txt` beside the executable) |
 
-## Shortcut keys
+## Free camera and noclip
 
-The menu's items on keys, only while the game's window is in front.
+Every tool is a row of the menu; F1 is the only key the tools have of their
+own, and only while the game's window is in front. F9, F10 and F11 stay the
+toolkit's: the frame-rate counter, the frame cap and a frame capture.
 
-| Key | Tool |
-| --- | --- |
-| F1 | The menu |
-| F2 | God mode |
-| F3 | Infinite ammo |
-| F4 | Invisible to enemies |
-| Home | Unlock everything |
-| F5 | Save your position (one per level) |
-| F6 | Back to the saved position |
-| F7 | Free camera |
-| F8 | Noclip |
-| F12 or Pause | Stop the game's clock, or start it again |
-| Page Down | One frame forward while the clock is stopped |
-| End | Wireframe view (every draw as lines; `RECOMP_WIREFRAME=1` starts with it on) |
-| - and + | Slower and faster |
-| Insert | The game's HUD on and off |
-
-F9, F10 and F11 stay the toolkit's: the frame-rate counter, the frame cap and
-a frame capture.
-
-**Free camera.** Left stick (or WASD) moves, right stick (or the arrow keys)
-looks, right trigger (or Space) rises, left trigger (or Ctrl) sinks, hold A
+**Free camera.** Left stick (or WASD) moves, right stick, the arrow keys or the mouse
+(with mouse look on) looks, right trigger (or Space) rises, left trigger (or Ctrl) sinks, hold A
 (or Shift) to go faster and B to go slower. The game reads an idle
 controller meanwhile, so you stay where you were. With the clock stopped
 you fly around a frozen scene. Everything made from the view follows the
 free camera, and the level keeps drawing from the room the camera is in.
+
+**Room culling.** The game draws only the rooms it can see through a chain
+of doorways, windows and gaps. Played normally you never notice; from the
+free camera or through a wall, whole rooms go missing. With the menu's
+**Room culling** on `auto` (the default) it is switched off while the free
+camera or noclip is on, so every room is drawn, and back to the game's own
+the moment both are off. `off` draws every room all the time and `on`
+keeps the game's culling even with those tools. With culling off, a level
+that reuses one space for two rooms that are never seen together (Siberia's
+lowest tunnel and the room above it) shows both there, which is why it is
+not the default in normal play. `ALLROOMS` in the readout means every room
+is being drawn.
 
 **Noclip.** You move with your usual controls, through walls, along the
 direction you are looking: look up and push forward to climb. God mode stays
@@ -116,16 +112,17 @@ readout on, the log gets the same lines once a second (`[TS2-DEV] frame N:`).
 
 ## Scripted runs
 
-A scripted run's window never has the focus, so it cannot press the keys.
-`ts2_dev_seq` presses them instead, at frames counted from the first frame
-the game presents:
+A scripted run's window never has the focus, so nothing can be chosen from
+the menu by hand. `ts2_dev_seq` runs the menu's actions instead, at frames
+counted from the first frame the game presents:
 
 ```text
 RECOMP_TS2_DEV_SEQ=4200:freeze,4210:freecam,4600:step,4700:freeze,4710:freecam
 ```
 
 The actions are `readout god ammo invisible unlock save load freecam noclip
-freeze step wireframe faster slower menu hud give itemnext itemprev`. The free camera and noclip read controller 1, so
+freeze step wireframe faster slower menu hud give itemnext itemprev culling
+cullingprev` (`culling` steps room culling auto, off, on). The free camera and noclip read controller 1, so
 `RECOMP_INPUT_SEQ` moves them (`<ms>:<control>:<hold ms>`, for example
 `90000:lstick_up:2000,93000:rstick_right:500,94000:rt:800`).
 `ts2_teleport` and a saved position make a test start from the same spot
@@ -161,9 +158,13 @@ how it was found.
   sites in the AI) reach nothing when they reach you. That alone did not
   stop guards, because once an enemy knows about you it keeps knowing with
   no ray at all, so the game's record of who knows about whom is held at
-  "unaware" for you, and an enemy whose target is you loses it. Bullets are
-  untouched. Not yet covered: security cameras, alarms and sensors, and enemies that
-  hear gunfire.
+  "unaware" for you, and an enemy whose target is you loses it. Security
+  cameras and wall guns ("remotes") have their own eyes, one function, which
+  now answers no for you, so they raise no alarm. You also wear the game's own
+  cloak, the yellow orb of arcade matches, with no time limit, and see your
+  gun as glass. The cloak alone would not do: bots' target scans skip a cloaked character, but story enemies and
+  cameras never look at it. Bullets are untouched. Not covered: alarms a
+  level's script raises by itself, and enemies that hear gunfire.
 - **Noclip and teleport** answer the character sweep, the one function every
   one of the player's movement modes moves through, with the tool's
   position, so the game builds your eye, your character and the rest from
@@ -174,6 +175,18 @@ how it was found.
   its look-at function, at that one call, and sets the room drawing starts
   from the same way. The view and everything made from it
   follow, including what graphics tools are given.
+- **Room culling** is the game's visibility pass: from the room the
+  camera is in it follows each portal (a doorway, window or gap) whose
+  near side the eye is on, skipping closed doors, and cuts each portal down
+  on screen to what the portals before it show. Only the rooms found are
+  drawn, each limited to its part of the screen, and a room's objects only
+  where their boxes fall in it. The free camera has that pass judge from the
+  camera's eye: the eye the game keeps is the player's (the look-at was given
+  the camera's as a copy), and judged from there the rooms vanished the
+  further the camera flew from the player. With culling off, after the pass
+  every room is marked as seen across the whole screen, numbered by how many
+  portals away it is from the camera's room, the order the game draws in
+  (near to far, and far to near for see-through surfaces).
 - **The aim line** calls the game's ray test from the eye along the view. In
   first person the eye is inside your own character, so for that one call
   your character is marked as one the test skips, as the game marks objects
@@ -186,31 +199,26 @@ how it was found.
 - **Give item** calls the function picking an item up calls, so its name
   shows and the pickup sound plays, then fills its ammunition and puts it in
   your hands. Left and right choose from the game's 42 items, by the names
-  the game itself shows; "(have)" means you already carry it. A level's data
-  holds only the guns that level uses (as an arcade match loads only the
-  set chosen for it), and the game would look for any other on the disc,
-  where it is not, and crash: those are marked "(not here)" and are not
-  given, unless the "every gun" mod below is in use.
+  the game itself shows; "(have)" means you already carry it. Every gun can
+  be given in every level (below). Anything the mounted data still lacks is
+  marked "(not here)" and not given: the game would look for it on the disc,
+  where it is not, and crash.
 
 ## Every gun in every level
 
-A level's data carries only the guns that level uses. To be able to give
-any of them anywhere, make a mod from your own disc that adds every gun's
-files (its models from `gun.pak`, its firing sound from a level that has
-it) to every level, and run with it:
-
-```bash
-python3 tools/ts2mod.py guns game/data private/mods/allguns
-RECOMP_MODS=private/mods/allguns ./split2_recomp     # ';' between mods on Windows
-```
+A level's data carries only the guns that level uses. With the tools on
+(`ts2_dev`, the default), every gun is added to every level at run time,
+from the game's own data: all of `gun.pak`, and the firing sounds in
+`sounds.pak`. There is nothing to build or install, nothing is written to
+disk, and a mod in `RECOMP_MODS` that supplies one of the same files wins.
+Only names a level lacks are added: a level's own copy always stays.
 
 The game still loads a gun only when it is given or picked up, so nothing
 is loaded up front. It sets up a model's textures only for the models
 in the level's own data, while the level loads, which a gun given from
 another level's data misses; so while a level plays, the tools set up the
 textures of a model loaded from outside the level's data as the game's own
-run-time code does. The mod is the game's own files: keep it in `private/`
-and never commit or share it.
+run-time code does. The same goes for a gun's HUD textures.
 
 Not possible: a full save state. The game is native code running on real
 threads with graphics objects behind it, so there is no snapshot to restore;

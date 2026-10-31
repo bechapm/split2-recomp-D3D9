@@ -103,9 +103,11 @@ starts and taken back out as it ends, so the camera does not move at either
 (`ts2_steady_aim`). The keys
 are PC-shooter defaults on the Default control setup's actions
 (`config/input_defaults.json`), the wheel zooms while looking through a scope and changes
-weapon otherwise, and Escape pauses in a level and backs out of menus. Not
-yet: the PAL release's look, mounted guns and look's mode 7, which stay on
-the right stick; clicking the menus. The plan below is how it looked
+weapon otherwise, and Escape pauses in a level and backs out of menus. On
+a mounted gun (look's modes 7 and 8) the mouse turns the angles look's stick
+turns before look runs, so the gun's arc holds it, and the debugging tools'
+free camera turns by it too (`ts2_mouse_turn`). Not yet: the PAL release's
+look; clicking the menus. The plan below is how it looked
 before.
 
 The toolkit has no mouse input today.

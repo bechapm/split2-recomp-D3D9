@@ -1472,6 +1472,19 @@ static void ts2_gallery_draw(void (*draw)(void))
  * The mods are indexed once, at start-up (xboxrecomp xbox_mods_walk); a
  * mount only compares the pak's directory against that index, and a read
  * opens the one host file it needs.
+ *
+ * The game's own guns go the same way. A level's pak carries only the guns
+ * that level uses, and the game looks for any other as a loose file on the
+ * disc, which is not there. With the debugging tools on, every gun is added
+ * to every level at run time, from the game's own data and nothing else:
+ * all of gun.pak (each gun's first- and third-person and promo models, the
+ * projectiles, the ammunition models and their textures) and the 39
+ * sfx/gun_*.xbs of sounds.pak (the only place with all of them; they are
+ * not in gun.pak). These come behind every mod, and only ever as a name a
+ * pak lacks: a pak's own copy always stays. Across the USA disc's 68 paks
+ * all 714 names have one content (measured), so no level's copy differs
+ * from these. Two directories are read at start-up, and a file is read from
+ * its pak when the game asks for it.
  */
 typedef struct Ts2Paks {
     uint32_t table;          /* the mounted paks: 32-byte records (above) */
@@ -1515,6 +1528,9 @@ typedef struct Ts2ModFile {
     int      ref_len;              /* files/: chr.pak's copy's length; -1 if it has none */
     uint32_t guest_name;           /* copies in guest memory, made when first needed */
     uint32_t guest_data;
+    int      own;                  /* the game's own gun: host is the Xbox path of its
+                                    * pak, and it starts at offset there */
+    uint32_t offset;
 } Ts2ModFile;
 
 typedef struct Ts2PakRec {
@@ -1647,7 +1663,10 @@ static int ts2_mf_pick(int first, const char *pak, int have, uint32_t have_len, 
     for (i = first; i >= 0 && i < g_ts2_mf_count &&
                     !strcmp(g_ts2_mf[i].lower, g_ts2_mf[first].lower); i++) {
         const Ts2ModFile *f = &g_ts2_mf[i];
-        if (f->pak[0]) {
+        if (f->own) {
+            if (!have && may_add)          /* adds; never replaces a pak's own */
+                return i;
+        } else if (f->pak[0]) {
             if (!strcmp(f->pak, pak))
                 return i;
         } else if (have ? (f->ref_len < 0 || (uint32_t)f->ref_len == have_len) : may_add) {
@@ -1673,66 +1692,129 @@ static int ts2_file_same(const char *a, const char *b, uint32_t size)
     return same;
 }
 
+/* A file on the disc, by its Xbox path (a whole pak from a mod wins, as it
+ * does for the game). */
+static FILE *ts2_disc_open(const char *xbox_path)
+{
+#ifdef _WIN32
+    wchar_t host[1024];
+    return xbox_translate_path(xbox_path, host, 1024) ? _wfopen(host, L"rb") : NULL;
+#else
+    char host[1024];
+    return xbox_translate_path(xbox_path, host, sizeof host) ? fopen(host, "rb") : NULL;
+#endif
+}
+
+/* A P8CK pak's directory on the disc: 12-byte entries (name offset, length,
+ * position) and the names. 1 if read; free both either way. */
+static int ts2_pak_directory(FILE *f, unsigned char **dir, uint32_t *count,
+                             unsigned char **names, uint32_t *names_len)
+{
+    unsigned char head[20];
+    uint32_t dir_off, names_off;
+
+    *dir = *names = NULL;
+    if (fread(head, 1, sizeof head, f) != sizeof head || memcmp(head, "P8CK", 4))
+        return 0;
+    memcpy(&dir_off, head + 4, 4);
+    memcpy(count, head + 8, 4);
+    memcpy(&names_off, head + 12, 4);
+    memcpy(names_len, head + 16, 4);
+    if (*count >= 0x100000 || *names_len >= 0x1000000)
+        return 0;
+    *names = (unsigned char *)malloc((size_t)*names_len + 1);
+    *dir = (unsigned char *)malloc((size_t)*count * 12 + 1);
+    if (!*names || !*dir || fseek(f, (long)names_off, SEEK_SET) ||
+        fread(*names, 1, *names_len, f) != *names_len || fseek(f, (long)dir_off, SEEK_SET) ||
+        fread(*dir, 1, (size_t)*count * 12, f) != *count * 12)
+        return 0;
+    (*names)[*names_len] = 0;
+    return 1;
+}
+
 /* chr.pak's lengths, as the game will see it (a mod's whole chr.pak if one
  * has it), for the files/ rule above. */
 static void ts2_paks_reference(void)
 {
-    unsigned char head[20];
-    uint32_t dir_off, count, names_off, names_len, k;
+    uint32_t count = 0, names_len = 0, k;
     unsigned char *names = NULL, *dir = NULL;
-    FILE *f = NULL;
+    FILE *f;
     int i, any = 0;
 
     for (i = 0; i < g_ts2_mf_count && !any; i++)
-        any = !g_ts2_mf[i].pak[0];
+        any = !g_ts2_mf[i].pak[0] && !g_ts2_mf[i].own;
     if (!any)
         return;
-    {
-#ifdef _WIN32
-        wchar_t host[1024];
-        if (xbox_translate_path("D:\\data\\chr.pak", host, 1024))
-            f = _wfopen(host, L"rb");
-#else
-        char host[1024];
-        if (xbox_translate_path("D:\\data\\chr.pak", host, sizeof host))
-            f = fopen(host, "rb");
-#endif
-    }
-    if (!f || fread(head, 1, sizeof head, f) != sizeof head || memcmp(head, "P8CK", 4)) {
+    f = ts2_disc_open("D:\\data\\chr.pak");
+    if (!f || !ts2_pak_directory(f, &dir, &count, &names, &names_len)) {
         fprintf(stderr, "[TS2-MODS] cannot read chr.pak's directory: files/ replaces every "
                 "copy of a name\n");
+        free(names);
+        free(dir);
         if (f)
             fclose(f);
         return;
     }
-    memcpy(&dir_off, head + 4, 4);
-    memcpy(&count, head + 8, 4);
-    memcpy(&names_off, head + 12, 4);
-    memcpy(&names_len, head + 16, 4);
-    names = (unsigned char *)malloc((size_t)names_len + 1);
-    dir = (unsigned char *)malloc((size_t)count * 12 + 1);
-    if (names && dir && count < 0x100000 && names_len < 0x1000000 &&
-        !fseek(f, (long)names_off, SEEK_SET) && fread(names, 1, names_len, f) == names_len &&
-        !fseek(f, (long)dir_off, SEEK_SET) && fread(dir, 1, (size_t)count * 12, f) == count * 12) {
-        names[names_len] = 0;
-        for (k = 0; k < count; k++) {
-            uint32_t name_off, len;
-            char lower[TS2_PAK_NAME];
-            int first;
-            memcpy(&name_off, dir + 12 * k, 4);
-            memcpy(&len, dir + 12 * k + 4, 4);
-            if (name_off >= names_len)
-                continue;
-            ts2_lower(lower, sizeof lower, (const char *)names + name_off);
-            for (first = ts2_mf_first(lower); first >= 0 && first < g_ts2_mf_count &&
-                                              !strcmp(g_ts2_mf[first].lower, lower); first++)
-                if (!g_ts2_mf[first].pak[0])
-                    g_ts2_mf[first].ref_len = (int)len;
-        }
+    for (k = 0; k < count; k++) {
+        uint32_t name_off, len;
+        char lower[TS2_PAK_NAME];
+        int first;
+        memcpy(&name_off, dir + 12 * k, 4);
+        memcpy(&len, dir + 12 * k + 4, 4);
+        if (name_off >= names_len)
+            continue;
+        ts2_lower(lower, sizeof lower, (const char *)names + name_off);
+        for (first = ts2_mf_first(lower); first >= 0 && first < g_ts2_mf_count &&
+                                          !strcmp(g_ts2_mf[first].lower, lower); first++)
+            if (!g_ts2_mf[first].pak[0])
+                g_ts2_mf[first].ref_len = (int)len;
     }
     free(names);
     free(dir);
     fclose(f);
+}
+
+/* The guns in one of the disc's paks (above), added to the index as the
+ * game's own, behind mods 0..mods-1. all: every entry; else its
+ * sfx/gun_*.xbs. */
+static int ts2_own_guns(const char *xbox_path, int all, int mods)
+{
+    uint32_t count = 0, names_len = 0, k;
+    unsigned char *names = NULL, *dir = NULL;
+    FILE *f = ts2_disc_open(xbox_path);
+    int added = 0;
+
+    if (!f || !ts2_pak_directory(f, &dir, &count, &names, &names_len)) {
+        fprintf(stderr, "[TS2-MODS] cannot read %s's directory: its guns stay in their levels\n",
+                xbox_path);
+        count = 0;
+    }
+    for (k = 0; k < count; k++) {
+        uint32_t name_off, len, pos;
+        const char *name;
+        size_t n;
+        int before = g_ts2_mf_count;
+        memcpy(&name_off, dir + 12 * k, 4);
+        memcpy(&len, dir + 12 * k + 4, 4);
+        memcpy(&pos, dir + 12 * k + 8, 4);
+        if (name_off >= names_len)
+            continue;
+        name = (const char *)names + name_off;
+        n = strlen(name);
+        if (!all && (strncmp(name, "sfx/gun_", 8) || n < 4 || strcmp(name + n - 4, ".xbs")))
+            continue;
+        ts2_mf_add(name, "", xbox_path, len, mods);
+        if (g_ts2_mf_count > before) {
+            g_ts2_mf[before].own = 1;
+            g_ts2_mf[before].offset = pos;
+            added++;
+        }
+    }
+    free(names);
+    free(dir);
+    if (f)
+        fclose(f);
+    return added;
 }
 
 /* Two mods that supply the same name for the same pak with different
@@ -1747,7 +1829,8 @@ static void ts2_paks_collisions(void)
         for (j = i + 1; j < g_ts2_mf_count && !strcmp(g_ts2_mf[j].lower, g_ts2_mf[i].lower); j++) {
             const Ts2ModFile *a = &g_ts2_mf[i], *b = &g_ts2_mf[j];
             int k, shown = 0, id;
-            if (a->mod == b->mod || (a->pak[0] && b->pak[0] && strcmp(a->pak, b->pak)))
+            if (a->own || b->own || a->mod == b->mod ||
+                (a->pak[0] && b->pak[0] && strcmp(a->pak, b->pak)))
                 continue;
             for (k = i + 1; k < j && !shown; k++)   /* reported against an earlier one */
                 shown = g_ts2_mf[k].mod == a->mod && g_ts2_mf[k].mod != b->mod &&
@@ -1785,6 +1868,13 @@ static void ts2_paks_init(void)
             fprintf(stderr, "[TS2-MODS] mod %d (%s): %d files in paks/, %d in files/\n", m,
                     xbox_mods_dir(m), in_files - before, g_ts2_mf_count - in_files);
     }
+    if (ts2_dev_gives_guns()) {
+        int guns = ts2_own_guns("D:\\data\\gun.pak", 1, mods);
+
+        guns += ts2_own_guns("D:\\data\\sounds.pak", 0, mods);
+        fprintf(stderr, "[TS2-MODS] every gun, for every level: %d files of the game's own "
+                "(ts2_dev = 0 leaves them in their levels)\n", guns);
+    }
     if (!g_ts2_mf_count)
         return;
     qsort(g_ts2_mf, (size_t)g_ts2_mf_count, sizeof *g_ts2_mf, ts2_mf_order);
@@ -1796,13 +1886,14 @@ static void ts2_paks_init(void)
 /* The mod file's bytes, up to n, into guest memory at dst. */
 static uint32_t ts2_mf_load(const Ts2ModFile *f, uint32_t dst, uint32_t n)
 {
-    FILE *fp = fopen(f->host, "rb");
+    FILE *fp = f->own ? ts2_disc_open(f->host) : fopen(f->host, "rb");
     size_t got = 0;
 
     if (n > f->size)
         n = f->size;
     if (fp) {
-        got = fread(TS2_PTR8(dst), 1, n, fp);
+        if (!f->own || !fseek(fp, (long)f->offset, SEEK_SET))
+            got = fread(TS2_PTR8(dst), 1, n, fp);
         fclose(fp);
     }
     if (got != n)
@@ -2028,12 +2119,15 @@ static void ts2_paks_patch(int r)
         static int verbose = -1;
         if (verbose < 0)
             verbose = getenv("RECOMP_TS2_MODS_TRACE") && atoi(getenv("RECOMP_TS2_MODS_TRACE"));
-        fprintf(stderr, "[TS2-MODS] data/%s: %d files from mods, %d of them added%s\n",
+        fprintf(stderr, "[TS2-MODS] data/%s: %d files served beside its own, %d of them added%s\n",
                 pak, replaced + added, added, verbose ? "" : " (RECOMP_TS2_MODS_TRACE=1 lists them)");
         for (i = 0; verbose && i < pr->n; i++) {
             const Ts2ModFile *f = &g_ts2_mf[pr->file[i]];
-            fprintf(stderr, "[TS2-MODS]   %s from mod %d (%s%s%s)\n", f->name, f->mod,
-                    f->pak[0] ? "paks/" : "files/", f->pak, f->pak[0] ? "/" : "");
+            if (f->own)
+                fprintf(stderr, "[TS2-MODS]   %s from %s\n", f->name, f->host);
+            else
+                fprintf(stderr, "[TS2-MODS]   %s from mod %d (%s%s%s)\n", f->name, f->mod,
+                        f->pak[0] ? "paks/" : "files/", f->pak, f->pak[0] ? "/" : "");
         }
         fflush(stderr);
     }
