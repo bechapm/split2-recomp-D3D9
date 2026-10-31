@@ -3,8 +3,8 @@
 Tools for setting up a test scene and holding it still: god mode, infinite
 ammo, invisibility to enemies, every unlock, stopping the game's clock or
 changing its speed, a readout of where you are and what the crosshair is
-on, saving and returning to a position, a free camera, noclip, a
-wireframe view, hiding the HUD and giving yourself any weapon or item, all
+on, saving and returning to a position, a free camera, noclip, room
+culling switched off, a wireframe view, hiding the HUD and giving yourself any weapon or item, all
 from a menu on screen. They are TimeSplitters 2's own
 (`src/ts2_devtools.c`); the toolkit only supplies the keyboard, the overlay's
 lines and the pad. USA release only for now, apart from unlock everything, which
@@ -15,7 +15,7 @@ PAL has too.
 **F1**, or both sticks clicked in together (**L3+R3**), opens and closes it.
 Up and down (the D-pad, the left stick or the arrow keys) choose a row, **A**
 or **Enter** sets it, left and right change a value (the game speed, the
-item to give), **B**
+item to give, room culling), **B**
 or **Esc** closes. The game reads an idle controller while the menu is open.
 Choosing the free camera or noclip closes the menu, so the controller drives
 them.
@@ -32,6 +32,7 @@ TS2 DEV MENU
   One frame forward
   Free camera              off
   Noclip                   off
+  Room culling             < auto >
   Save position
   Back to saved position
   Wireframe                off
@@ -58,6 +59,7 @@ per line, or set the environment variable beside it:
 | `ts2_hud = 0` | `RECOMP_TS2_HUD` | The game's HUD hidden from the start |
 | `ts2_give_item = 11` | `RECOMP_TS2_GIVE_ITEM` | The item "Give item" starts on (its number in the game's item list) |
 | `ts2_teleport = x,y,z[,yaw,pitch]` | `RECOMP_TS2_TELEPORT` | Where you are put once the first level is playing |
+| `ts2_room_culling = auto` | `RECOMP_TS2_ROOM_CULLING` | Room culling: `auto` (the default) is the game's own, switched off while the free camera or noclip is on; `off` draws every room all the time; `on` keeps the game's even with those tools |
 | `ts2_dev_seq = FRAME:ACTION,...` | `RECOMP_TS2_DEV_SEQ` | The menu's actions at given frames (below) |
 | | `RECOMP_TS2_POSITIONS` | Where saved positions are kept (default `ts2_positions.txt` beside the executable) |
 
@@ -73,6 +75,18 @@ toolkit's: the frame-rate counter, the frame cap and a frame capture.
 controller meanwhile, so you stay where you were. With the clock stopped
 you fly around a frozen scene. The view RTX Remix is given follows the free
 camera, and the level keeps drawing from the room the camera is in.
+
+**Room culling.** The game draws only the rooms it can see through a chain
+of doorways, windows and gaps. Played normally you never notice; from the
+free camera or through a wall, whole rooms go missing. With the menu's
+**Room culling** on `auto` (the default) it is switched off while the free
+camera or noclip is on, so every room is drawn, and back to the game's own
+the moment both are off. `off` draws every room all the time and `on`
+keeps the game's culling even with those tools. With culling off, a level
+that reuses one space for two rooms that are never seen together (Siberia's
+lowest tunnel and the room above it) shows both there, which is why it is
+not the default in normal play. `ALLROOMS` in the readout means every room
+is being drawn.
 
 **Noclip.** You move with your usual controls, through walls, along the
 direction you are looking: look up and push forward to climb. God mode stays
@@ -108,7 +122,8 @@ RECOMP_TS2_DEV_SEQ=4200:freeze,4210:freecam,4600:step,4700:freeze,4710:freecam
 ```
 
 The actions are `readout god ammo invisible unlock save load freecam noclip
-freeze step wireframe faster slower menu hud give itemnext itemprev`. The free camera and noclip read controller 1, so
+freeze step wireframe faster slower menu hud give itemnext itemprev culling
+cullingprev` (`culling` steps room culling auto, off, on). The free camera and noclip read controller 1, so
 `RECOMP_INPUT_SEQ` moves them (`<ms>:<control>:<hold ms>`, for example
 `90000:lstick_up:2000,93000:rstick_right:500,94000:rt:800`).
 `ts2_teleport` and a saved position make a test start from the same spot
@@ -161,6 +176,18 @@ how it was found.
   its look-at function, at that one call, and sets the room drawing starts
   from the same way. The view and everything made from it
   follow, Remix's camera included.
+- **Room culling** is the game's visibility pass: from the room the
+  camera is in it follows each portal (a doorway, window or gap) whose
+  near side the eye is on, skipping closed doors, and cuts each portal down
+  on screen to what the portals before it show. Only the rooms found are
+  drawn, each limited to its part of the screen, and a room's objects only
+  where their boxes fall in it. The free camera has that pass judge from the
+  camera's eye: the eye the game keeps is the player's (the look-at was given
+  the camera's as a copy), and judged from there the rooms vanished the
+  further the camera flew from the player. With culling off, after the pass
+  every room is marked as seen across the whole screen, numbered by how many
+  portals away it is from the camera's room, the order the game draws in
+  (near to far, and far to near for see-through surfaces).
 - **The aim line** calls the game's ray test from the eye along the view. In
   first person the eye is inside your own character, so for that one call
   your character is marked as one the test skips, as the game marks objects

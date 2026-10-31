@@ -185,4 +185,15 @@ static const Ts2DevAddrs k_ts2_dev = {
      * the AI cloaks itself (sub_00074980, sub_00075160, sub_000814B0), and
      * sub_00045A10 fades it out (code). */
     sub_000459C0, sub_00045A10,
+    /* rooms, room_count, portals, viewport: the visibility pass sub_0001F450
+     * (overrides.inc) starts from the room at ctx+0x294 and walks the
+     * portals of each room ([0x3534D4] + room * 0xB0, +4 the list) through
+     * the portal table [0x3534D8] (a portal: +0, +4 its two rooms) for rooms
+     * 1..[0x4B33DC] (sub_0001E9B0, sub_0001EAB0), clipping each portal on
+     * screen to the rectangle of [0x483F28] and of the room it is seen from
+     * (sub_0001EF00, sub_0001EBE0). The draw sub_0001DA30 then draws the
+     * rooms found by depth, each where its rectangle overlaps the screen's,
+     * and a room's objects where their boxes do (sub_0001D860,
+     * sub_0014E0F0) (code). */
+    0x003534D4, 0x004B33DC, 0x003534D8, 0x00483F28,
 };

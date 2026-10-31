@@ -105,6 +105,14 @@ typedef struct Ts2DevAddrs {
      * time limit, on a character's status block. */
     void (*cloak_on)(void);
     void (*cloak_off)(void);
+    /* The rooms the game draws (room culling, which the free camera and
+     * noclip turn off): the room table, a pointer (room * 0xB0; +4 its
+     * portal list: a count, then that many portal numbers), the number of
+     * rooms (numbered 1..n), the portal table, a pointer (a pointer per
+     * portal; +0 and +4 the two rooms it joins), and the screen's rectangle
+     * the game draws into, a pointer (ints: +0 left, +4 right, +0x14 top,
+     * +0x18 bottom). */
+    uint32_t rooms, room_count, portals, viewport;
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the
@@ -136,6 +144,16 @@ enum {
     TS2_CTX_EYE     = 0x27C,  /* the eye the camera update hands the look-at */
     TS2_CTX_ROOM    = 0x294,  /* the room drawing starts from */
     TS2_CTX_FORWARD = 0x2E4,  /* the forward it hands the look-at */
+    /* What the visibility pass leaves for the draw: per room, 12 bytes at
+     * TS2_CTX_SEEN + room * 12 -- how many portals away it was found (int,
+     * -1 not seen), then its rectangle on screen (shorts: left, top, right,
+     * bottom) -- and the deepest of those at TS2_CTX_SEEN_DEEPEST. */
+    TS2_CTX_SEEN    = 0x358,
+    TS2_CTX_SEEN_DEEPEST = 0xCC4,
+    TS2_ROOM_STRIDE = 0xB0,   /* the room table */
+    TS2_ROOM_PORTALS = 0x004, /* a room: its portal list */
+    TS2_ROOMS_MAX   = 200,    /* the room tables' size */
+    TS2_SEEN_DEPTH_MAX = 0x4F,/* the draw sorts rooms into 80 depths */
 };
 
 /* Once a frame, after the game's present: keys, switches, the readout. */
@@ -159,6 +177,13 @@ void ts2_dev_ray(void (*ray)(void));
  * forward xyz, up xyz), all by value): the free camera's eye and direction
  * at the camera update's own call. */
 void ts2_dev_look_at(void (*look_at)(void));
+
+/* The visibility pass (wraps the release's, which takes no arguments and
+ * decides, from the camera's room and eye, which rooms are drawn and where
+ * on screen): with the free camera on it judges from the camera's eye, not
+ * the player's, and with room culling off (by default while the free camera
+ * or noclip is on) every room is drawn. */
+void ts2_dev_visibility(void (*visibility)(void));
 
 /* The in-game HUD (wraps the release's HUD draw, which takes no arguments
  * and draws all of it: health and armour, ammo, the radar, the crosshair,
