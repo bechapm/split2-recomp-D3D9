@@ -97,8 +97,8 @@ laid out the way PC shooters are:
 | Reload | R | Y |
 | Crouch | Left Ctrl (or C) | Left stick press |
 | Pause | Escape | Start |
-| Menus: accept, back | Enter, Escape (or Backspace) | A, B |
-| Menus: point, choose, back, scroll | The mouse, left button, right button, wheel | |
+| Menus: accept, back | Enter or Space, Escape (or Backspace) | A, B |
+| Menus: point, choose, scroll | The mouse, left button, wheel (click the Back hint to go back) | |
 | Back button | Tab | Back |
 
 The mouse turns you by so many degrees a count, as in a PC shooter, rather

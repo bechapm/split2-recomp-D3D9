@@ -42,7 +42,9 @@
  *
  *   one key, two meanings (the toolkit's bindings filter): Escape is bound
  *     to Start, which pauses in a level, but in the front end Start
- *     accepts, so there Escape reads as B (back). And the mouse wheel,
+ *     accepts, so there Escape reads as B (back), as it does on a pause
+ *     menu screen opened from a page; Space is A while a menu is up
+ *     (m_menu_keys). And the mouse wheel,
  *     bound to the D-pad's left and right (previous and next weapon), is
  *     its up and down (zoom in and out) while zoomed in through a scope, as
  *     the game's Default controls have the D-pad. Aiming with no scope (or
@@ -87,6 +89,10 @@
 #include "recomp/ts2_region.h"
 #include "input_bindings.h"          /* xboxrecomp: the mouse and the filter */
 #include "recomp_config.h"           /* xboxrecomp: RECOMP_TS2_MOUSE_LOG */
+
+/* xboxrecomp src/d3d/d3d8_xbox.h: a key held, with the game's window in front. */
+extern int xbox_D3D8KeyDown(int vk);
+enum { VK_SPACE_ = 0x20 };
 
 /* Where this release keeps what the mouse uses: each release's own table. */
 #if defined(TS2_REGION_US)
@@ -197,6 +203,43 @@ static int m_scoped(uint32_t p)
     return M_MEM32(p + TS2_PM_AIMING) && (M_MEM32(p + TS2_PM_FLAGS) & TS2_PF_SCOPE);
 }
 
+/* Escape and Space in the menus, as PC menus have them (the conventions
+ * write-up: Windows pairs Escape with B and Enter and Space with A).
+ * Escape is bound to Start, which pauses in a level and closes the pause
+ * menu from its pages; but in the front end Start accepts, and on a pause
+ * menu screen opened from a page it would close the whole menu, so there
+ * Escape reads as B (back one step). Space, bound to nothing, is A while a
+ * menu is up. Each key keeps the meaning it had when it went down for as
+ * long as it is held: an Escape held from a menu into play must not
+ * become a press of Start there, nor one held from play into the pause
+ * menu a press of B. */
+static void m_menu_keys(XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
+{
+    static int esc_held, esc_back, space_held, space_a;
+    int esc = (kbm->wButtons & XBOX_GAMEPAD_START) != 0;
+    int space = xbox_D3D8KeyDown(VK_SPACE_) != 0;
+
+    if (!esc) {
+        esc_held = 0;
+    } else if (!esc_held) {
+        esc_held = 1;
+        esc_back = A->level_id && (!m_in_level() || ts2_menu_esc_backs());
+    }
+    if (esc && esc_back) {
+        pad->wButtons &= (WORD)~XBOX_GAMEPAD_START;
+        if (!m_in_level() || ts2_menu_esc_backs())
+            pad->bAnalogButtons[XBOX_BUTTON_B] = 255;
+    }
+    if (!space) {
+        space_held = 0;
+    } else if (!space_held) {
+        space_held = 1;
+        space_a = recomp_pointer_wanted();
+    }
+    if (space && space_a && recomp_pointer_wanted())
+        pad->bAnalogButtons[XBOX_BUTTON_A] = 255;
+}
+
 static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *from_keyboard)
 {
     XBOX_GAMEPAD keys = *from_keyboard;
@@ -210,14 +253,9 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *from_
         keys.wButtons |= M.key_buttons;     /* RECOMP_TS2_MOUSE_SEQ */
         pad->wButtons |= M.key_buttons;
     }
-    if (!m_in_level()) {
-        /* The front end: Escape (Start, from the keyboard) backs out. */
-        if (A->level_id && (kbm->wButtons & XBOX_GAMEPAD_START)) {
-            pad->wButtons &= (WORD)~XBOX_GAMEPAD_START;
-            pad->bAnalogButtons[XBOX_BUTTON_B] = 255;
-        }
+    m_menu_keys(pad, kbm);
+    if (!m_in_level())
         return;
-    }
     /* Changing weapon aimed: noted here, where the request is seen, and
      * acted on in the game's own update (m_unaim_tick). Not when the wheel
      * or keys are zooming a scope. */

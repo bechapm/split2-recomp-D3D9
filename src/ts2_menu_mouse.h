@@ -166,9 +166,14 @@ enum {
  * menu is up, and what the pointer did over it. */
 void ts2_menu_frame(void);
 
-/* From the bindings filter, for controller 1: the presses a click, the
- * right button or the wheel stand for, added to what the pad reads. */
+/* From the bindings filter, for controller 1: the presses a click or the
+ * wheel stands for, added to what the pad reads. */
 void ts2_menu_filter(XBOX_GAMEPAD *pad);
+
+/* Whether Esc should go back one step as B does, rather than be Start: a
+ * pause menu screen opened from one of its pages is up (where Start would
+ * close the whole menu). For src/ts2_mouse.c's bindings filter. */
+int ts2_menu_esc_backs(void);
 
 /* The button that skips a cutscene, as a pad press: a button bit or, for A
  * and B, *analog set to which (1 A, 2 B). RECOMP_TS2_SKIP_BUTTON picks it. */

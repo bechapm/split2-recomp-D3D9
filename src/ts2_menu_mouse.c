@@ -17,7 +17,9 @@
  *     move the selection while it rests; only an item wholly in view, so
  *     the panel never scrolls under a resting pointer;
  *   - a click on an item presses A for it (the game's own accept: its
- *     action, its sound, the next screen). On an item whose value is
+ *     action, its sound, the next screen). A click acts when the button
+ *     comes up over what it went down on, as on a PC (letting go somewhere
+ *     else does nothing); the press selects the line at once. On an item whose value is
  *     stepped with left and right (an option) a click on the value's left
  *     half or the arrow before it steps it back, on its right half or the
  *     arrow after it on; on its name, A if it has an action, else on;
@@ -32,8 +34,10 @@
  *     it has while that way is held;
  *   - on the pause menu's Inventory page, the pointer selects the row it
  *     moves onto and a click takes it (the game's Select);
- *   - the right button is B (back), and the wheel the D-pad's up and down,
- *     which scrolls a long list.
+ *   - the wheel is the D-pad's up and down, which scrolls a long list;
+ *     the right button does nothing (Esc, Backspace and the Back hint go
+ *     back, as the conventions most PC games and the platform guidelines
+ *     follow have it).
  *
  * A menu is up when player 1's stack of screens has one on top that runs
  * and is shown, and there is a panel in it with the focus: in the front end
@@ -42,8 +46,8 @@
  * screen there with nothing to select takes a click as Start (Select
  * Controller, Enter Name, whose letters are not items). The pause menu is
  * left only by the keys that leave it and by its own Continue: a click on
- * nothing does nothing there, and the right button is B only on a screen
- * opened from a page (Start or B on a page closes the menu). In a level the
+ * nothing does nothing there (Start or B on a page closes the menu), and on
+ * a screen opened from a page Esc is B, which goes back one step. In a level the
  * mouse goes back to the camera when the menu closes. The debugging tools'
  * menu (ts2_mouse_hold) puts all of this aside.
  *
@@ -124,6 +128,18 @@ typedef struct Hit {
     int row, col;
 } Hit;
 
+/* What a click is on, noted when the left button goes down and compared
+ * when it comes up (n_target, n_same). */
+enum { T_NONE, T_PAGE, T_SCROLL, T_HINT, T_INVENTORY, T_EMPTY, T_ITEM };
+
+typedef struct Target {
+    int      kind;
+    int      dir;            /* T_PAGE: -1, 1; T_SCROLL: TS2_ARROW_*; T_ITEM: the option side */
+    int      button;         /* T_HINT: 1 B, 2 A */
+    int      row;            /* T_INVENTORY */
+    uint32_t item;           /* T_ITEM */
+} Target;
+
 static struct {
     unsigned frame;
     int      started;
@@ -152,6 +168,9 @@ static struct {
     float    px, pxl, pxr, pxs, py;
     WORD     scroll_held;    /* a scroll arrow held down: the D-pad way it scrolls */
     int      players;        /* local players, this frame */
+    int      left_held;      /* the left button was down at the last read */
+    Target   armed;          /* what the left button went down on */
+    int      esc_backs;      /* a pause menu screen opened from a page is up */
 } N;
 
 /* ── what the menus drew ─────────────────────────────────────── */
@@ -1074,13 +1093,111 @@ static void n_press_skip(const char *where)
         fprintf(stderr, "[TS2-MENU] frame %u: click, %s: skip\n", N.frame, where);
 }
 
+/* What the pointer is on at (x, y), in the order a click takes it: a hint,
+ * a page's arrow or a scroll arrow drawn last frame, an Inventory row, a
+ * line of the menu (with the side of an option's value it is on), or, on a
+ * front-end screen with nothing to select, the screen itself. *over says
+ * whether a line is under it, with *hit what it is, for hovering. */
+static void n_target(uint32_t s, uint32_t top, float x, float y, int in_level,
+                     Target *t, Hit *hit, int *over)
+{
+    const Drawn *d = n_drawn_under();
+    float right;
+
+    memset(t, 0, sizeof *t);
+    *over = s && n_hit(s, x, y, hit);
+    if (d && d->kind == DR_PAGE) {
+        t->kind = T_PAGE;
+        t->dir = d->dir;
+    } else if (d && d->kind == DR_SCROLL) {
+        t->kind = T_SCROLL;
+        t->dir = d->dir;
+    } else if (d && d->kind == DR_HINT) {
+        t->kind = T_HINT;
+        t->button = d->button;
+    } else if ((t->row = n_inventory_row(top, x, y)) >= 0) {
+        t->kind = T_INVENTORY;
+    } else if (*over) {
+        t->kind = T_ITEM;
+        t->item = hit->item;
+        if (n_option_value(hit->panel, hit->item, &right)) {
+            t->dir = n_option_side(hit->panel, hit->item, x);
+            if (!t->dir && !N_MEM32(hit->item + TS2_MI_ACTION))
+                t->dir = 1;
+        }
+    } else if (!s && !in_level) {
+        t->kind = T_EMPTY;
+    }
+}
+
+static int n_same(const Target *a, const Target *b)
+{
+    return a->kind == b->kind && a->dir == b->dir && a->button == b->button &&
+           a->row == b->row && a->item == b->item;
+}
+
+/* A click on t: the pad press it stands for. */
+static void n_act(const Target *t, const Hit *hit)
+{
+    switch (t->kind) {
+    case T_PAGE:
+        /* The D-pad's left or right, which changes page. */
+        n_press(t->dir < 0 ? XBOX_GAMEPAD_DPAD_LEFT : XBOX_GAMEPAD_DPAD_RIGHT, 0, 0);
+        if (N.log)
+            fprintf(stderr, "[TS2-MENU] frame %u: click on the page arrow: %s\n", N.frame,
+                    t->dir < 0 ? "left" : "right");
+        break;
+    case T_HINT:
+        n_press(0, t->button == 2, t->button == 1);
+        if (N.log)
+            fprintf(stderr, "[TS2-MENU] frame %u: click on the hint: %s\n", N.frame,
+                    t->button == 2 ? "A" : "B");
+        break;
+    case T_INVENTORY:
+        /* A: the game's own Select, which also closes the pause menu. */
+        n_press(0, 1, 0);
+        if (N.log)
+            fprintf(stderr, "[TS2-MENU] frame %u: click on inventory row %d: A\n", N.frame,
+                    t->row);
+        break;
+    case T_EMPTY:
+        /* A front-end screen with nothing to select (Press Start, Select
+         * Controller, Enter Name, a message): Start goes on from it, so the
+         * mouse alone gets through. Not in the pause menu, where Start
+         * would close it. */
+        n_press(XBOX_GAMEPAD_START, 0, 0);
+        if (N.log)
+            fprintf(stderr, "[TS2-MENU] frame %u: click, nothing to select: Start\n", N.frame);
+        break;
+    case T_ITEM:
+        /* An option steps the way the click is on its value; on its name,
+         * A if it has an action, else on. Anything else is accepted (A). */
+        if (t->dir)
+            n_press(t->dir < 0 ? XBOX_GAMEPAD_DPAD_LEFT : XBOX_GAMEPAD_DPAD_RIGHT, 0, 0);
+        else
+            n_press(0, 1, 0);
+        if (N.log)
+            fprintf(stderr, "[TS2-MENU] frame %u: click on row %d column %d: %s\n", N.frame,
+                    hit->row, hit->col, t->dir < 0 ? "left" : t->dir > 0 ? "right" : "A");
+        break;
+    default:
+        break;
+    }
+}
+
+int ts2_menu_esc_backs(void)
+{
+    return N.want && N.esc_backs;
+}
+
 void ts2_menu_frame(void)
 {
     RecompPointer ptr;
     uint32_t s, top;
     Hit hit;
+    Target cur;
     float x = 0.0f, y = 0.0f;
-    int over, moved, side, row, in_level, stacked;
+    int over, moved, down, up, in_level;
 
     N.frame++;
     /* What was drawn this frame is measured against from now on, and the
@@ -1120,6 +1237,9 @@ void ts2_menu_frame(void)
         N.screen = 0;
         N.wheel = 0;
         N.scroll_held = 0;
+        N.esc_backs = 0;
+        N.left_held = 0;
+        N.armed.kind = T_NONE;
         return;
     }
     if (!N.want) {
@@ -1137,7 +1257,10 @@ void ts2_menu_frame(void)
         N.hover = 0;
     N.screen = top;
     N.players = A->players ? (int)n_guest_call(A->players, NULL, 0) : 1;
-    stacked = N_MEMI(A->frontend + TS2_MF_COUNT) >= 2;
+    /* In the pause menu, a screen opened from a page (its stack holds two):
+     * there Esc (Start, from the keyboard) goes back one step as B does,
+     * where Start would close the whole menu (src/ts2_mouse.c). */
+    N.esc_backs = in_level && N_MEMI(A->frontend + TS2_MF_COUNT) >= 2;
 
     if (N.seq_on)
         n_seq_place();
@@ -1158,15 +1281,21 @@ void ts2_menu_frame(void)
         N.pxs = ptr.x * TS2_MENU_W;
     }
     if (!top) {
-        /* The front end with no screen up: a cutscene, or between two. */
+        /* The front end with no screen up: a cutscene, or between two. A
+         * skip is taken on the press, as fire is in a level. */
         N.wheel = 0;
+        N.left_held = (ptr.held & (1u << RECOMP_MOUSE_LEFT)) != 0;
+        N.armed.kind = T_NONE;
         if ((ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && N.frame >= N.gap_until && !in_level)
             n_press_skip("no screen up");
         return;
     }
-    /* Nothing while the screen takes no input (it is opening or closing). */
+    /* Nothing while the screen takes no input (it is opening or closing),
+     * and a click begun before it is forgotten. */
     if ((N_MEM32(top + TS2_MS_FLAGS) & 2u) || N_MEM8(A->frontend + TS2_MF_LOCK) < 0) {
         N.scroll_held = 0;
+        N.left_held = (ptr.held & (1u << RECOMP_MOUSE_LEFT)) != 0;
+        N.armed.kind = T_NONE;
         return;
     }
 
@@ -1175,6 +1304,7 @@ void ts2_menu_frame(void)
         const Drawn *d = ptr.inside ? n_drawn_under() : NULL;
 
         if ((ptr.held & (1u << RECOMP_MOUSE_LEFT)) && d && d->kind == DR_SCROLL) {
+            N.left_held = 1;
             N.buttons = N.scroll_held;
             N.analog_a = N.analog_b = 0;
             N.until = N.frame + PRESS_FRAMES;
@@ -1186,119 +1316,76 @@ void ts2_menu_frame(void)
         N.gap_until = N.frame + GAP_FRAMES;
     }
 
-    /* A click on what was drawn: a hint, a page's arrow, a scroll arrow. */
-    if (ptr.inside && (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && N.frame >= N.gap_until) {
-        const Drawn *d = n_drawn_under();
-
-        if (d && d->kind == DR_PAGE) {
-            n_press(d->dir < 0 ? XBOX_GAMEPAD_DPAD_LEFT : XBOX_GAMEPAD_DPAD_RIGHT, 0, 0);
-            if (N.log)
-                fprintf(stderr, "[TS2-MENU] frame %u: click on the page arrow: %s\n", N.frame,
-                        d->dir < 0 ? "left" : "right");
-            return;
-        }
-        if (d && d->kind == DR_SCROLL) {
-            N.scroll_held = d->dir == TS2_ARROW_UP ? XBOX_GAMEPAD_DPAD_UP : XBOX_GAMEPAD_DPAD_DOWN;
-            n_press(N.scroll_held, 0, 0);
-            if (N.log)
-                fprintf(stderr, "[TS2-MENU] frame %u: click on the scroll arrow: %s\n", N.frame,
-                        d->dir == TS2_ARROW_UP ? "up" : "down");
-            return;
-        }
-        if (d && d->kind == DR_HINT) {
-            n_press(0, d->button == 2, d->button == 1);
-            if (N.log)
-                fprintf(stderr, "[TS2-MENU] frame %u: click on the hint: %s\n", N.frame,
-                        d->button == 2 ? "A" : "B");
-            return;
-        }
-    }
+    /* A click acts when the left button comes up over what it went down
+     * on, as a click does on a PC (Xbox Accessibility Guideline 107, WCAG
+     * 2.5.2): pressing on the wrong line and sliding off before letting go
+     * does nothing. A press selects the line it is on at once, so the
+     * selection shows what will be taken. A scroll arrow is the exception:
+     * it scrolls from the press and for as long as the button is held. */
+    over = 0;
+    if (ptr.inside)
+        n_target(s, top, x, y, in_level, &cur, &hit, &over);
+    else
+        memset(&cur, 0, sizeof cur);
+    down = (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) != 0;
+    up = (N.left_held || down) && !(ptr.held & (1u << RECOMP_MOUSE_LEFT));
+    N.left_held = (ptr.held & (1u << RECOMP_MOUSE_LEFT)) != 0;
 
     /* The Inventory page: its rows are not items. The pointer selects the
-     * row it moves onto, a click takes it (A: the game's own Select, which
-     * also closes the pause menu). */
-    row = ptr.inside ? n_inventory_row(top, x, y) : -1;
-    if (row >= 0 && (moved || (ptr.pressed & (1u << RECOMP_MOUSE_LEFT))))
-        n_inventory_select(row);
-    if (row >= 0 && (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && N.frame >= N.gap_until) {
-        n_press(0, 1, 0);
-        if (N.log)
-            fprintf(stderr, "[TS2-MENU] frame %u: click on inventory row %d: A\n", N.frame, row);
-        return;
-    }
-
-    /* A screen with nothing to select. In the front end (Select Controller,
-     * Enter Name, a message) the left button is Start, which goes on from
-     * them, and the right button B, so the mouse alone gets through them.
-     * In the pause menu a click on nothing does nothing -- Start or B would
-     * close it -- and the right button is B only on a screen opened from a
-     * page; the wheel is the D-pad's up and down, which scrolls a page. */
-    if (!s) {
-        if (N.frame < N.gap_until)
-            return;
-        if ((ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && !in_level) {
-            n_press(XBOX_GAMEPAD_START, 0, 0);
-            if (N.log)
-                fprintf(stderr, "[TS2-MENU] frame %u: click, nothing to select: Start\n", N.frame);
-        } else if ((ptr.pressed & (1u << RECOMP_MOUSE_RIGHT)) && (!in_level || stacked)) {
-            n_press(0, 0, 1);
-            if (N.log)
-                fprintf(stderr, "[TS2-MENU] frame %u: right button: B\n", N.frame);
-        } else if (N.wheel && in_level) {
-            n_press(N.wheel > 0 ? XBOX_GAMEPAD_DPAD_UP : XBOX_GAMEPAD_DPAD_DOWN, 0, 0);
-            if (N.log)
-                fprintf(stderr, "[TS2-MENU] frame %u: wheel: D-pad %s\n", N.frame,
-                        N.wheel > 0 ? "up" : "down");
-            N.wheel += N.wheel > 0 ? -1 : 1;
-        }
-        return;
-    }
-
-    over = ptr.inside && n_hit(s, x, y, &hit);
-    /* A click always selects what it is on: the keys may have moved the
+     * row it moves onto or presses on. */
+    if (cur.kind == T_INVENTORY && (moved || down))
+        n_inventory_select(cur.row);
+    /* A press always selects what it is on: the keys may have moved the
      * selection away from the item the pointer last selected. */
-    if (over && ((moved && hit.item != N.hover) || (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)))) {
+    if (over && ((moved && hit.item != N.hover) || down)) {
         n_select(&hit);
         N.hover = hit.item;
     }
     if (!over && moved)
         N.hover = 0;
 
-    /* One press at a time, with a gap after it so each is seen. */
-    if (N.frame < N.gap_until)
-        return;
-    if (over && (ptr.pressed & (1u << RECOMP_MOUSE_LEFT))) {
-        /* An option steps the way the click is on its value; on its name,
-         * A if it has an action, else on. Anything else is accepted (A). */
-        float right;
-        const char *what;
-
-        side = 0;
-        if (n_option_value(hit.panel, hit.item, &right)) {
-            side = n_option_side(hit.panel, hit.item, x);
-            if (!side && !N_MEM32(hit.item + TS2_MI_ACTION))
-                side = 1;
+    if (down) {
+        N.armed = cur;
+        if (cur.kind == T_SCROLL && N.frame >= N.gap_until) {
+            N.scroll_held = cur.dir == TS2_ARROW_UP ? XBOX_GAMEPAD_DPAD_UP : XBOX_GAMEPAD_DPAD_DOWN;
+            n_press(N.scroll_held, 0, 0);
+            if (N.log)
+                fprintf(stderr, "[TS2-MENU] frame %u: press on the scroll arrow: %s\n", N.frame,
+                        cur.dir == TS2_ARROW_UP ? "up" : "down");
+            N.armed.kind = T_NONE;
+            return;
         }
-        if (side) {
-            n_press(side < 0 ? XBOX_GAMEPAD_DPAD_LEFT : XBOX_GAMEPAD_DPAD_RIGHT, 0, 0);
-            what = side < 0 ? "left" : "right";
-        } else {
-            n_press(0, 1, 0);
-            what = "A";
-        }
-        if (N.log)
-            fprintf(stderr, "[TS2-MENU] frame %u: click on row %d column %d: %s\n", N.frame,
-                    hit.row, hit.col, what);
-    } else if ((ptr.pressed & (1u << RECOMP_MOUSE_RIGHT)) && (!in_level || stacked)) {
-        /* In the pause menu, not on a page itself: B there closes it. */
-        n_press(0, 0, 1);
-        if (N.log)
-            fprintf(stderr, "[TS2-MENU] frame %u: right button: B\n", N.frame);
-    } else if (N.wheel) {
-        n_press(N.wheel > 0 ? XBOX_GAMEPAD_DPAD_UP : XBOX_GAMEPAD_DPAD_DOWN, 0, 0);
-        if (N.log)
-            fprintf(stderr, "[TS2-MENU] frame %u: wheel: D-pad %s\n", N.frame,
-                    N.wheel > 0 ? "up" : "down");
-        N.wheel += N.wheel > 0 ? -1 : 1;
     }
+    if (up) {
+        Target armed = N.armed;
+
+        N.armed.kind = T_NONE;
+        if (armed.kind != T_NONE && armed.kind != T_SCROLL && n_same(&armed, &cur) &&
+            N.frame >= N.gap_until) {
+            n_act(&cur, &hit);
+            return;
+        }
+        if (armed.kind != T_NONE && N.log)
+            fprintf(stderr, "[TS2-MENU] frame %u: let go away from what was pressed: nothing\n",
+                    N.frame);
+    }
+
+    /* The right button does nothing in a menu: no guideline gives it a
+     * meaning there, and Esc, Backspace and the clickable Back hint go back
+     * (the user's decision, after the conventions write-up). The wheel is
+     * the D-pad's up and down: it moves the selection, or scrolls a page
+     * with nothing to select; in the front end's screens with nothing to
+     * select it does nothing. One press at a time, with a gap after it so
+     * each is seen. */
+    if (N.frame < N.gap_until || !N.wheel)
+        return;
+    if (!s && !in_level) {
+        N.wheel = 0;
+        return;
+    }
+    n_press(N.wheel > 0 ? XBOX_GAMEPAD_DPAD_UP : XBOX_GAMEPAD_DPAD_DOWN, 0, 0);
+    if (N.log)
+        fprintf(stderr, "[TS2-MENU] frame %u: wheel: D-pad %s\n", N.frame,
+                N.wheel > 0 ? "up" : "down");
+    N.wheel += N.wheel > 0 ? -1 : 1;
 }
