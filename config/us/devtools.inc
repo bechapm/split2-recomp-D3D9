@@ -32,6 +32,10 @@ extern void sub_00149790(void);
 extern void sub_001B7D80(void);
 extern void sub_000A9BA0(void);
 
+/* cloak_on, cloak_off, below. */
+extern void sub_000459C0(void);
+extern void sub_00045A10(void);
+
 static const Ts2DevAddrs k_ts2_dev = {
     /* player_base: [0x00497028] is the local player records, 0xD3C each;
      * player 1 is the first (code: P = base + sub_00121930(i) * 0xD3C;
@@ -177,4 +181,22 @@ static const Ts2DevAddrs k_ts2_dev = {
      * plasma 11 -> 45, 67, 68; homing 14 -> 47; rockets 13 -> 46, 75). The
      * count is only a bound on what is read. */
     0x002C167C, 0xD0, 32,
+    /* cloak_on, cloak_off: the game's cloak, on the status block at R+0x1498.
+     * The yellow orb of arcade matches is sub_00047A20 (from the power-up
+     * pickup sub_0013D850, type 0): bit 0x10 of block+4, and 30 seconds in
+     * block+0x28. sub_000459C0 is the same with no time limit, which is how
+     * the AI cloaks itself (sub_00074980, sub_00075160, sub_000814B0), and
+     * sub_00045A10 fades it out (code). */
+    sub_000459C0, sub_00045A10,
+    /* rooms, room_count, portals, viewport: the visibility pass sub_0001F450
+     * (overrides.inc) starts from the room at ctx+0x294 and walks the
+     * portals of each room ([0x3534D4] + room * 0xB0, +4 the list) through
+     * the portal table [0x3534D8] (a portal: +0, +4 its two rooms) for rooms
+     * 1..[0x4B33DC] (sub_0001E9B0, sub_0001EAB0), clipping each portal on
+     * screen to the rectangle of [0x483F28] and of the room it is seen from
+     * (sub_0001EF00, sub_0001EBE0). The draw sub_0001DA30 then draws the
+     * rooms found by depth, each where its rectangle overlaps the screen's,
+     * and a room's objects where their boxes do (sub_0001D860,
+     * sub_0014E0F0) (code). */
+    0x003534D4, 0x004B33DC, 0x003534D8, 0x00483F28,
 };
