@@ -30,4 +30,5 @@ static const Ts2DevAddrs k_ts2_dev = {
     0, 0, 0, 0, 0,      /* the HUD's named textures */
     0, 0, 0,            /* and a gun's among them */
     0, 0,               /* the game's cloak */
+    0, 0, 0, 0,         /* rooms, portals and the screen (room culling) */
 };

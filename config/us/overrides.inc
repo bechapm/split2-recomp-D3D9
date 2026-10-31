@@ -66,6 +66,14 @@ void sub_001ADF80(void) { ts2_dev_clock(sub_001ADF80_gen); }
 extern void sub_00020160_gen(void);
 void sub_00020160(void) { ts2_dev_ray(sub_00020160_gen); }
 
+/* visibility is sub_0001F450 (no arguments; reached by tail jumps from the
+ * per-screen setups sub_000DDE00 and sub_000DDFD0): which rooms are drawn,
+ * judged from the camera's room (ctx+0x294) and eye (ctx+0x27C). Wrapped so
+ * the free camera is judged from its own eye, and so the debugging tools can
+ * turn room culling off (src/ts2_devtools.c, config/us/devtools.inc). */
+extern void sub_0001F450_gen(void);
+void sub_0001F450(void) { ts2_dev_visibility(sub_0001F450_gen); }
+
 /* look_at is sub_000E67F0(dst, eye xyz, forward xyz, up xyz), cdecl, all
  * by value: the camera update sub_00035930 builds the view [ctx+0x208] with
  * it at 0x00036D47 (found with RECOMP_WATCH_WRITE on the view matrix).
