@@ -89,8 +89,8 @@ a frame capture.
 looks, right trigger (or Space) rises, left trigger (or Ctrl) sinks, hold A
 (or Shift) to go faster and B to go slower. The game reads an idle
 controller meanwhile, so you stay where you were. With the clock stopped
-you fly around a frozen scene. The view RTX Remix is given follows the free
-camera, and the level keeps drawing from the room the camera is in.
+you fly around a frozen scene. Everything made from the view follows the
+free camera, and the level keeps drawing from the room the camera is in.
 
 **Noclip.** You move with your usual controls, through walls, along the
 direction you are looking: look up and push forward to climb. God mode stays
@@ -111,8 +111,7 @@ room you are in and your health. The second is what the middle of the view is
 on, from the game's own line-of-sight test (the one its bullets and enemies
 use): the point, how far away, and whether it is a room's wall or floor, a
 door, a character or a pickup, with the model it is drawn with. It gives no
-texture: under RTX Remix, Remix's own developer menu shows the texture under
-the cursor and its hash. The third names the tools that are on. With the
+texture: a graphics tool's own overlay can show that. The third names the tools that are on. With the
 readout on, the log gets the same lines once a second (`[TS2-DEV] frame N:`).
 
 ## Scripted runs
@@ -174,7 +173,7 @@ how it was found.
 - **The free camera** replaces the eye and direction the camera update hands
   its look-at function, at that one call, and sets the room drawing starts
   from the same way. The view and everything made from it
-  follow, Remix's camera included.
+  follow, including what graphics tools are given.
 - **The aim line** calls the game's ray test from the eye along the view. In
   first person the eye is inside your own character, so for that one call
   your character is marked as one the test skips, as the game marks objects

@@ -96,7 +96,7 @@
  *   free camera: the eye and direction the camera update hands its
  *     look-at, replaced at that one call, and the room drawing starts from
  *     found by the portal walk, so the view, everything made from it and
- *     the camera RTX Remix is given all follow, and rooms are drawn from
+ *     what graphics tools are given all follow, and rooms are drawn from
  *     where the camera is. The pad (and the keyboard) drive the camera while
  *     it is on, and the game reads a neutral pad.
  *   HUD: the game's HUD draw (all of it: health, ammunition, the radar, the
