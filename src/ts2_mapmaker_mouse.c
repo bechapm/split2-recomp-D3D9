@@ -11,7 +11,8 @@
  *
  *   - the hand is where the pointer is: the pointer's place is written
  *     into the hand's own position (F+0x30, F+0x34) when the mouse moves,
- *     so the stick and the keys still move it while the mouse rests. It
+ *     so the stick and the keys still move it while the mouse rests, and
+ *     while the wheel zooms, since a zoom moves the hand with the map. It
  *     stops where the stick stops it, and the pointer past that edge
  *     pushes the stick that way, which scrolls the map as the stick does
  *     (an editor's edge scrolling);
@@ -52,7 +53,7 @@ extern ptrdiff_t g_xbox_mem_offset;
 
 #define M_MEM32(a) (*(volatile uint32_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 #define M_MEMI(a)  (*(volatile int32_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
-#define M_MEM16(a) (*(volatile int16_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
+#define M_MEM16(a) (*(volatile uint16_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 
 static const Ts2MapMakerAddrs *const MA = &k_ts2_mapmaker;
 
@@ -64,8 +65,9 @@ static const Ts2MapMakerAddrs *const MA = &k_ts2_mapmaker;
 static struct {
     unsigned frame;
     int      log;
+    uint32_t logged;            /* the class of the screen last written to the log */
     int      a_held;            /* the left button went down on the grid and is held */
-    int      armed;             /* a screen: the hot spot (id + 1) the left button went down on */
+    int      armed;             /* a screen: the hot spot id the left button went down on */
     int      left_was;
     /* Presses for the bindings filter. */
     volatile WORD buttons;
@@ -146,7 +148,7 @@ static float mm_clamp(float v, float lo, float hi)
 }
 
 /* The hand's limits now, in menu pixels: the editor's margins, or a
- * screen's own (read as pixels or as 16.16, whichever they are). */
+ * screen's own. */
 static void mm_bounds(uint32_t top, float *l, float *t, float *r, float *b)
 {
     *l = (float)MA->margin_x;
@@ -154,19 +156,16 @@ static void mm_bounds(uint32_t top, float *l, float *t, float *r, float *b)
     *r = 640.0f - (float)MA->margin_x;
     *b = 480.0f - (float)MA->margin_y;
     if (top && MA->screen_bounds) {
-        float v[4];
-        int k;
+        float st = (float)M_MEMI(MA->screen_bounds) / 65536.0f;
+        float sb = (float)M_MEMI(MA->screen_bounds + 4u) / 65536.0f;
+        float sl = (float)M_MEMI(MA->screen_bounds + 8u) / 65536.0f;
+        float sr = (float)M_MEMI(MA->screen_bounds + 12u) / 65536.0f;
 
-        for (k = 0; k < 4; k++) {
-            int32_t i = M_MEMI(MA->screen_bounds + 4u * (uint32_t)k);
-
-            v[k] = (i > 4096 || i < -4096) ? (float)i / 65536.0f : (float)i;
-        }
-        if (v[2] > v[0] + 8.0f && v[3] > v[1] + 8.0f) {
-            *l = v[0];
-            *t = v[1];
-            *r = v[2];
-            *b = v[3];
+        if (sr > sl + 8.0f && sb > st + 8.0f) {
+            *l = sl;
+            *t = st;
+            *r = sr;
+            *b = sb;
         }
     }
 }
@@ -177,24 +176,61 @@ static void mm_hand_to(uint32_t f, float x, float y)
     M_MEMI(f + TS2_MF_HAND_Y) = (int32_t)(y * 65536.0f);
 }
 
-/* The hot spot of a screen of rows under (x, y): its id + 1, or 0. */
+/* The hot spot of a screen of rows under (x, y): its id, or 0, which is no
+ * spot to the game too. Its corners are the hand's: from the viewport, not
+ * the screen. */
 static int mm_hot_at(uint32_t s, float x, float y)
 {
     int n = M_MEMI(s + TS2_MS_HOT_COUNT), k;
+    uint32_t hots = M_MEM32(s + TS2_MS_HOTS);
+    float right = 0.0f;
 
     if (n <= 0 || n > 256)
         return 0;
+    /* A spot is only as wide as its row's text, and the bar over the row
+     * runs across them all: the column's width is what is seen. */
     for (k = 0; k < n; k++) {
-        uint32_t h = s + TS2_MS_HOTS + (uint32_t)k * TS2_HOT_SIZE;
+        uint32_t h = hots + (uint32_t)k * TS2_HOT_SIZE;
+        float r = (float)M_MEM16(h + TS2_HOT_X) + (float)M_MEM16(h + TS2_HOT_W);
+
+        if (r > right)
+            right = r;
+    }
+    for (k = 0; k < n; k++) {
+        uint32_t h = hots + (uint32_t)k * TS2_HOT_SIZE;
         float hx = (float)M_MEM16(h + TS2_HOT_X), hy = (float)M_MEM16(h + TS2_HOT_Y);
-        float hw = (float)M_MEM16(h + TS2_HOT_W), hh = (float)M_MEM16(h + TS2_HOT_H);
+        float hh = (float)M_MEM16(h + TS2_HOT_H);
 
         if (M_MEM16(h + TS2_HOT_FLAGS) & 0x81)
             continue;
-        if (x >= hx && x < hx + hw && y >= hy && y < hy + hh)
-            return (int)M_MEM16(h + TS2_HOT_ID) + 1;
+        if (x >= hx && x < right && y >= hy && y < hy + hh)
+            return (int)M_MEM16(h + TS2_HOT_ID);
     }
     return 0;
+}
+
+/* The line of the Mode question under (x, y), from 0, or -1: after its title
+ * each hot spot is a line, or the same line again. */
+static int mm_mode_at(uint32_t s, float x, float y)
+{
+    int n = M_MEMI(s + TS2_MS_HOT_COUNT), k, row = -1;
+    uint32_t hots = M_MEM32(s + TS2_MS_HOTS), y_was = 0xFFFFFFFFu;
+
+    if (n <= 1 || n > 16)
+        return -1;
+    for (k = 1; k < n; k++) {
+        uint32_t h = hots + (uint32_t)k * TS2_HOT_SIZE;
+        float hx = (float)M_MEM16(h + TS2_HOT_X), hy = (float)M_MEM16(h + TS2_HOT_Y);
+
+        if (M_MEM16(h + TS2_HOT_Y) != y_was) {
+            y_was = M_MEM16(h + TS2_HOT_Y);
+            row++;
+        }
+        if (x >= hx && x < hx + (float)M_MEM16(h + TS2_HOT_W) && y >= hy &&
+            y < hy + (float)M_MEM16(h + TS2_HOT_H))
+            return row;
+    }
+    return -1;
 }
 
 int ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y, int inside,
@@ -225,7 +261,7 @@ int ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y,
 
     if (!top) {
         /* The editor. The hand follows the pointer, inside its limits. */
-        if (inside && moved && (hand & 2u))
+        if (inside && (moved || MM.frame < MM.zoom_until + GAP_FRAMES) && (hand & 2u))
             mm_hand_to(f, mm_clamp(x, l, r), mm_clamp(y, t, b));
         /* Past a limit, the stick pushes that way: the map scrolls under
          * the hand, as with the stick. Not while a key or the pad moves
@@ -240,9 +276,13 @@ int ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y,
             else if (y > b)
                 MM.stick_y = -(int)(32767.0f * mm_clamp((y - b) / EDGE_FULL, 0.3f, 1.0f));
         }
-        /* Left: A for as long as it is held, from a press on the grid. */
+        /* Left: A for as long as it is held, from a press on the grid. A
+         * click over within one frame is still a press of A. */
         if (left_down && !menu_took_press && inside) {
-            MM.a_held = 1;
+            if (left_held)
+                MM.a_held = 1;
+            else if (MM.frame >= MM.gap_until)
+                mm_press(0, 1, 0);
             if (MM.log)
                 fprintf(stderr, "[TS2-MAPMAKER] frame %u: left button on the grid at %.0f,%.0f: A held\n",
                         MM.frame, x, y);
@@ -270,21 +310,60 @@ int ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y,
     }
 
     MM.a_held = 0;
+    if (MM.log && (M_MEM32(top + 4u) != MM.logged || left_down)) {
+        int n = M_MEMI(top + TS2_MS_HOT_COUNT), k;
+
+        MM.logged = M_MEM32(top + 4u);
+        fprintf(stderr, "[TS2-MAPMAKER] frame %u: screen %08X class %08X, pointer %.0f,%.0f in %d "
+                "moved %d, hand bits %u at %.0f,%.0f, limits %.0f,%.0f-%.0f,%.0f, %d hot spots, "
+                "picked %u\n", MM.frame, top, M_MEM32(top + 4u), x, y, inside, moved, hand & 3u,
+                (float)M_MEMI(f + TS2_MF_HAND_X) / 65536.0f,
+                (float)M_MEMI(f + TS2_MF_HAND_Y) / 65536.0f, l, t, r, b, n,
+                (unsigned)M_MEM16(top + TS2_MS_HOT_PICKED));
+        for (k = 0; k < n && k < 32; k++) {
+            uint32_t h = M_MEM32(top + TS2_MS_HOTS) + (uint32_t)k * TS2_HOT_SIZE;
+
+            fprintf(stderr, "[TS2-MAPMAKER]   hot %d at %u,%u size %ux%u id %u flags 0x%X\n", k,
+                    (unsigned)M_MEM16(h + TS2_HOT_X), (unsigned)M_MEM16(h + TS2_HOT_Y),
+                    (unsigned)M_MEM16(h + TS2_HOT_W), (unsigned)M_MEM16(h + TS2_HOT_H),
+                    (unsigned)M_MEM16(h + TS2_HOT_ID), (unsigned)M_MEM16(h + TS2_HOT_FLAGS));
+        }
+    }
+    if (MA->mode_class && M_MEM32(top + 4u) == MA->mode_class) {
+        /* The Mode question: the line under the pointer is picked as the
+         * D-pad picks it, and a click on it is A. */
+        int row = inside ? mm_mode_at(top, x, y) : -1;
+
+        if (row >= 0 && (moved || left_down))
+            M_MEMI(MA->mode_row) = row;
+        if (left_down && !menu_took_press)
+            MM.armed = row + 1;
+        if (left_up) {
+            if (MM.armed && MM.armed == row + 1 && MM.frame >= MM.gap_until)
+                mm_press(0, 1, 0);
+            MM.armed = 0;
+        }
+        return 1;
+    }
     if (hand & 2u) {
         /* A screen with the hand (the palette): the hand follows the
          * pointer, the game picks what it is over (hot spots, F+0x18 bit 1),
          * and a click is A on it. */
+        int picked;
+
         if (inside && moved)
             mm_hand_to(f, mm_clamp(x, l, r), mm_clamp(y, t, b));
+        /* With no hit test (bit 1 clear) the hand is a cursor over the whole
+         * screen, and a click is A wherever it is. */
+        picked = (hand & 1u) ? M_MEM16(top + TS2_MS_HOT_PICKED) : 1;
         if (left_down && !menu_took_press && inside)
-            MM.armed = M_MEMI(top + TS2_MS_HOT_PICKED) + 1;
+            MM.armed = picked;
         if (left_up) {
-            if (MM.armed && MM.armed == M_MEMI(top + TS2_MS_HOT_PICKED) + 1 &&
-                MM.frame >= MM.gap_until) {
+            if (MM.armed && MM.armed == picked && MM.frame >= MM.gap_until) {
                 mm_press(0, 1, 0);
                 if (MM.log)
                     fprintf(stderr, "[TS2-MAPMAKER] frame %u: click with the hand on %d: A\n",
-                            MM.frame, MM.armed - 1);
+                            MM.frame, MM.armed);
             }
             MM.armed = 0;
         }
@@ -293,23 +372,22 @@ int ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y,
          * D-pad picks it; a click on it is A. */
         int hot = inside ? mm_hot_at(top, x, y) : 0;
 
-        if (hot && moved && M_MEMI(top + TS2_MS_HOT_PICKED) != hot - 1) {
-            M_MEMI(top + TS2_MS_HOT_PICKED) = hot - 1;
+        if (hot && moved && M_MEM16(top + TS2_MS_HOT_PICKED) != hot) {
+            M_MEM16(top + TS2_MS_HOT_PICKED) = (uint16_t)hot;
             if (MM.log)
                 fprintf(stderr, "[TS2-MAPMAKER] frame %u: the pointer picks row %d\n", MM.frame,
-                        hot - 1);
+                        hot);
         }
         if (left_down && !menu_took_press) {
             MM.armed = hot;
             if (hot)
-                M_MEMI(top + TS2_MS_HOT_PICKED) = hot - 1;
+                M_MEM16(top + TS2_MS_HOT_PICKED) = (uint16_t)hot;
         }
         if (left_up) {
             if (MM.armed && MM.armed == hot && MM.frame >= MM.gap_until) {
                 mm_press(0, 1, 0);
                 if (MM.log)
-                    fprintf(stderr, "[TS2-MAPMAKER] frame %u: click on row %d: A\n", MM.frame,
-                            hot - 1);
+                    fprintf(stderr, "[TS2-MAPMAKER] frame %u: click on row %d: A\n", MM.frame, hot);
             }
             MM.armed = 0;
         }

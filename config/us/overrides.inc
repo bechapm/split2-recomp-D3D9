@@ -190,7 +190,7 @@ void sub_001B7450(void) { ts2_ui_enter(); sub_001B7450_gen(); ts2_ui_leave(); }
 extern void sub_001B7540_gen(void);   /* PAL 0x001B7950, -0x410 */
 void sub_001B7540(void) { ts2_ui_enter(); sub_001B7540_gen(); ts2_ui_leave(); }
 extern void sub_000AA5B0_gen(void);   /* PAL 0x000AA5F0, -0x40 */
-void sub_000AA5B0(void) { ts2_ui_enter(); sub_000AA5B0_gen(); ts2_ui_leave(); }
+void sub_000AA5B0(void) { ts2_ui_enter(); ts2_menu_sprite_id(); sub_000AA5B0_gen(); ts2_ui_leave(); }
 extern void sub_000AABB0_gen(void);   /* PAL 0x000AABF0, -0x40 */
 void sub_000AABB0(void) { ts2_ui_enter(); sub_000AABB0_gen(); ts2_ui_leave(); }
 extern void sub_000AA630_gen(void);   /* PAL 0x000AA670, -0x40 */

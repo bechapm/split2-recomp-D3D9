@@ -64,8 +64,14 @@ typedef struct Ts2MenuAddrs {
      * the keys in a line while they drive a menu). */
     void   (*text_width_raw)(void);
     /* MapMaker's tab bar: the sprites' return addresses of its arrows,
-     * left and right (the D-pad's left and right change tab). */
+     * left and right (the D-pad's left and right change tab). They are
+     * sprites by id: dword array sprite id to texture, and the dword holding
+     * the texture records, 0x34 each, width at +0x26 and height at +0x2A. */
     uint32_t tab_left, tab_right;
+    uint32_t sprite_textures, texture_records;
+    /* The prompt text calls drawn just after the picture at the left and
+     * right of MapMaker's diamond: their return addresses. */
+    uint32_t prompt_label_left, prompt_label_right;
 } Ts2MenuAddrs;
 
 /* The menu state F (one per local player), a screen S, a panel P and an

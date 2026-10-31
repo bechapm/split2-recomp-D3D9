@@ -92,7 +92,13 @@ static const Ts2MenuAddrs k_ts2_menu = {
     sub_001ACA50, sub_001AC170_gen,
     /* tab_left, tab_right: MapMaker's tab bar (Tile, Item, Light, Story
      * Enemies, Game Logic; names at 0x002D2F98), drawn by sub_00112DE0, its
-     * arrows through sub_001B75A0 from 0x001130AC (left) and 0x001132B0
-     * (right). */
+     * arrows through sub_000AA5B0 from 0x001130AC (left, sprite 0x14) and
+     * 0x001132B0 (right, sprite 0x15). sprite_textures, texture_records:
+     * sub_000AA5B0 takes the texture from [0x0035F238 + id * 4] and sizes
+     * the sprite from its record in [[0x00348A2C]]. */
     0x001130AC, 0x001132B0,
+    0x0035F238, 0x00348A2C,
+    /* prompt_label_left, prompt_label_right: sub_00111F70's text for X,
+     * after its picture, and for B, after its. */
+    0x001120BF, 0x0011205B,
 };

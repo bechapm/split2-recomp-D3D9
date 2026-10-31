@@ -20,11 +20,14 @@ typedef struct Ts2MapMakerAddrs {
      * game's 640x480 pixels: it stops this far inside each edge, and the
      * stick pushed past them scrolls the map. */
     int      margin_x, margin_y;
-    /* dwords: the hand's limits with one of the editor's screens up (the
-     * palette): left, top, right, bottom, in the same units as the hand. */
+    /* dwords, 16.16 as the hand is: its limits with one of the editor's
+     * screens up (the palette): top, bottom, left, right. */
     uint32_t screen_bounds;
     /* Which trigger zooms in: 0 the left, 1 the right; the other zooms out. */
     int      zoom_in_right;
+    /* The Mode question that opens a new map (Beginner, Advanced): its
+     * screen's class, and the dword holding the line picked. */
+    uint32_t mode_class, mode_row;
 } Ts2MapMakerAddrs;
 
 /* In the menu state F (src/ts2_menu_mouse.h, TS2_MF_*). */
@@ -33,12 +36,12 @@ enum {
     TS2_MF_HAND_X     = 0x030,  /* int, 16.16: the hand, in 640x480 pixels */
     TS2_MF_HAND_Y     = 0x034,
     /* A screen's hot spots: the places on it the hand can pick. */
-    TS2_MS_HOT_PICKED = 0x648,  /* int: the id of the one picked, as A takes it */
-    TS2_MS_HOTS       = 0x64C,  /* the first of them, TS2_HOT_SIZE each */
+    TS2_MS_HOT_PICKED = 0x648,  /* word: the id of the one picked, as A takes it; 0 none */
+    TS2_MS_HOTS       = 0x64C,  /* dword: where they are, TS2_HOT_SIZE each */
     TS2_MS_HOT_COUNT  = 0x650,
     TS2_HOT_SIZE      = 0x18,
     TS2_HOT_X = 0x0, TS2_HOT_Y = 0x2, TS2_HOT_W = 0x4, TS2_HOT_H = 0x6,   /* int16 */
-    TS2_HOT_ID = 0x8,           /* int16 */
+    TS2_HOT_ID = 0x8,           /* word */
     TS2_HOT_FLAGS = 0xA,        /* int16: 1 not a place to pick; 0x80 cannot be picked now */
 };
 

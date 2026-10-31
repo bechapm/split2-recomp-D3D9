@@ -117,6 +117,10 @@ void ts2_menu_arrow(int dir);
  * the pause menu's page arrows are drawn as these. */
 void ts2_menu_sprite(void);
 
+/* A sprite by id (float x, float y, id, colour), before its body runs:
+ * MapMaker's tab arrows are drawn as these (sub_000AA5B0). */
+void ts2_menu_sprite_id(void);
+
 /* A button's picture (x0, y0, x1, y1, icon, alpha): icon 0 B, 1 A, 2 Y,
  * 3 X, as the pause pages draw their prompts (sub_000AA360 in the USA
  * release). Drawn by fn, or, while the keyboard and mouse drive a menu, as

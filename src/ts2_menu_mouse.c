@@ -124,6 +124,7 @@ extern ptrdiff_t g_xbox_mem_offset;
 #define N_MEMI(a)  (*(volatile int32_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 #define N_MEMF(a)  (*(volatile float *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 #define N_MEM8(a)  (*(volatile int8_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
+#define N_MEM16(a) (*(volatile uint16_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 
 /* The game's menus are laid out on a 640x480 screen. */
 #define TS2_MENU_W 640.0f
@@ -191,6 +192,9 @@ static struct {
     uint32_t prompt_col, prompt_col2;
     unsigned prompt_frame;
     int      prompt_lit;
+    /* How far the key name just drawn runs past its button's picture. */
+    float    icon_over;
+    unsigned icon_over_frame;
     /* The D-pad's picture being drawn (ts2_menu_dpad): its corner and the
      * ways it offers (up, down, left, right). */
     int      mapmaker_ui;    /* MapMaker's placement was asked for */
@@ -741,18 +745,34 @@ void ts2_menu_sprite(void)
             N_MEM32(a + 0x24) = n_lit(N_MEM32(a + 0x24));
         return;
     }
-    /* MapMaker's tab arrows: as a pause page's, the D-pad's left and right. */
-    if (ret && (ret == A->tab_left || ret == A->tab_right)) {
-        n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, ret == A->tab_left ? -1 : 1, 0, x0, y0, x1, y1);
-        if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 4.0f))
-            N_MEM32(a + 0x24) = n_lit(N_MEM32(a + 0x24));
-        return;
-    }
     if (!A->page_draw || ret < A->page_draw || ret >= A->page_draw_end)
         return;
     n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, x0 + x1 < TS2_MENU_W ? -1 : 1, 0, x0, y0, x1, y1);
     if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 6.0f))
         N_MEM32(a + 0x24) = n_lit(N_MEM32(a + 0x24));
+}
+
+/* A sprite by id, (float x, float y, id, colour), sized by its texture:
+ * MapMaker's tab arrows, the D-pad's left and right as a pause page's. */
+void ts2_menu_sprite_id(void)
+{
+    uint32_t a = g_esp, ret, rec;
+    float x0, y0, x1, y1;
+
+    if (!N.want || !A->tab_left)
+        return;
+    ret = N_MEM32(a);
+    if (ret != A->tab_left && ret != A->tab_right)
+        return;
+    rec = N_MEM32(N_MEM32(A->texture_records)) +
+          N_MEM32(A->sprite_textures + 4u * N_MEM32(a + 12)) * 0x34u;
+    x0 = N_MEMF(a + 4);
+    y0 = N_MEMF(a + 8);
+    x1 = x0 + (float)N_MEM16(rec + 0x26);
+    y1 = y0 + (float)N_MEM16(rec + 0x2A);
+    n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, ret == A->tab_left ? -1 : 1, 0, x0, y0, x1, y1);
+    if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 4.0f))
+        N_MEM32(a + 16) = n_lit(N_MEM32(a + 16));
 }
 
 /* How wide the first n bytes of a string draw in the font selected now. */
@@ -1014,11 +1034,13 @@ static uint32_t n_f2u(float f)
 /* A button's picture at (x0, y0)-(x1, y1), icon 0 B, 1 A, 2 Y, 3 X: noted
  * as that button's hint, and drawn by fn as it is (lit_slot, when the
  * picture has one, set while the pointer is over it), or, while the
- * keyboard and mouse drive the menu, as the key's name in its place:
- * ending where the picture ended (right) or centred on it, in the given
- * colours. The stack is fn's; it is left as one call of fn leaves it. */
+ * keyboard and mouse drive the menu, as the key's name in its place, in
+ * the given colours: ending where the picture ended (align 0), centred on
+ * it (1), or starting where it started (2). A button that does nothing now (live 0, drawn dim) is neither
+ * noted nor lit. The stack is fn's; it is left as one call of fn leaves
+ * it. */
 static void n_icon(void (*fn)(void), float x0, float y0, float x1, float y1, int icon,
-                   int centred, uint32_t lit_slot, uint32_t col, uint32_t col2)
+                   int align, int live, uint32_t lit_slot, uint32_t col, uint32_t col2)
 {
     uint32_t a = g_esp, buf, keep[3], args[5], f = TS2_FONT_PROMPTS;
     float h, w, tx, ty;
@@ -1028,7 +1050,7 @@ static void n_icon(void (*fn)(void), float x0, float y0, float x1, float y1, int
     button = icon == 0 ? 1 : icon == 1 ? 2 : icon == 2 ? 3 : icon == 3 ? 4 : 0;
     name = button && recomp_input_using_keys() ? n_key_name(button) : NULL;
     if (!name || !A->text_outlined || !A->font_select || !A->font_now || !(buf = n_key_buffer())) {
-        if (button) {
+        if (button && live) {
             n_drawn_add(DR_HINT, TS2_PLACE_AUTO, 0, button, x0, y0, x1, y1);
             if (lit_slot && (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 2.0f) ||
                              n_hint_hot(button, y0, y1)))
@@ -1045,15 +1067,23 @@ static void n_icon(void (*fn)(void), float x0, float y0, float x1, float y1, int
     n_guest_call(A->font_select, &f, 1);
     h = n_font_height(TS2_FONT_PROMPTS);
     w = (float)n_raw_width(buf);
-    tx = centred ? (x0 + x1 - w) * 0.5f : x1 - w;
+    tx = align == 1 ? (x0 + x1 - w) * 0.5f : align == 2 ? x0 : x1 - w;
     ty = y0 + ((y1 - y0) - h) * 0.5f;
-    lit = (N.prompt_lit && N.prompt_frame == N.frame && !centred) ||
+    lit = (N.prompt_lit && N.prompt_frame == N.frame && !align) ||
           n_under(TS2_PLACE_AUTO, tx, ty, tx + w, ty + h, 3.0f) || n_hint_hot(button, ty, ty + h);
-    if (lit) {
-        col = n_lit(col);
-        col2 = n_outline(col);
+    if (!live) {
+        col = (col & 0xFFFFFF00u) | 0x3Fu;
+        col2 = (col2 & 0xFFFFFF00u) | 0x3Fu;
+    } else {
+        if (lit) {
+            col = n_lit(col);
+            col2 = n_outline(col);
+        }
+        n_drawn_add(DR_HINT, TS2_PLACE_AUTO, 0, button, tx, ty, tx + w, ty + h);
     }
-    n_drawn_add(DR_HINT, TS2_PLACE_AUTO, 0, button, tx, ty, tx + w, ty + h);
+    /* Its label, drawn next, goes out by what the name overflows. */
+    N.icon_over = align != 1 && w > x1 - x0 ? w - (x1 - x0) : 0.0f;
+    N.icon_over_frame = N.frame;
     args[0] = n_f2u(tx);
     args[1] = n_f2u(ty);
     args[2] = buf;
@@ -1090,13 +1120,14 @@ void ts2_menu_icon(void (*fn)(void))
         col = 0x64646400u | alpha;
         col2 = alpha;
     }
-    n_icon(fn, x0, y0, x1, y1, N_MEMI(a + 20), 0, 0, col, col2);
+    n_icon(fn, x0, y0, x1, y1, N_MEMI(a + 20), 0, 1, 0, col, col2);
 }
 
 void ts2_menu_icon_at(void (*fn)(void))
 {
     uint32_t a = g_esp;
     float x, y;
+    int icon;
 
     if (!N.want || !A->frontend) {
         fn();
@@ -1104,7 +1135,10 @@ void ts2_menu_icon_at(void (*fn)(void))
     }
     x = n_arg_coord(a + 4);
     y = n_arg_coord(a + 8);
-    n_icon(fn, x, y, x + 24.0f, y + 22.0f, N_MEMI(a + 12), 1, 16, 0x6464647Fu, 0x0000007Fu);
+    /* A diamond: a name wider than its picture goes out to its own side. */
+    icon = N_MEMI(a + 12);
+    n_icon(fn, x, y, x + 24.0f, y + 22.0f, icon, icon == 3 ? 0 : icon == 0 ? 2 : 1,
+           N_MEMI(a + 16) != 0, 16, 0x6464647Fu, 0x0000007Fu);
 }
 
 void ts2_menu_dpad(void (*fn)(void))
@@ -1244,6 +1278,13 @@ void ts2_menu_text(void (*draw)(void), int form, int place)
     }
     h = n_font_height(N_MEM32(A->font_now));
 
+    /* The label beside a prompt's key name (n_icon). */
+    if (form == TS2_TEXT_AT && N.icon_over_frame == N.frame && N.icon_over > 0.0f &&
+        (N_MEM32(a) == A->prompt_label_left || N_MEM32(a) == A->prompt_label_right)) {
+        x += N_MEM32(a) == A->prompt_label_left ? -N.icon_over : N.icon_over;
+        N_MEMF(a + 4) = x;
+    }
+
     /* A pause page's "Select" or "Back": the text, and its button's icon
      * before it (ts2_menu_icon notes that, or the key in its place). Lit,
      * with the icon, when the pointer is over either. */
@@ -1320,14 +1361,18 @@ void ts2_menu_text(void (*draw)(void), int form, int place)
  * takes that click). */
 static const Drawn *n_drawn_under(void)
 {
-    int last = g_drawn_cur ^ 1, k;
+    int last = g_drawn_cur ^ 1, k, pass;
 
-    for (k = 0; k < g_drawn_n[last]; k++) {
-        const Drawn *d = &g_drawn[last][k];
+    /* What the pointer is on first, then what it is near: the D-pad's pieces
+     * lie closer together than the slack. */
+    for (pass = 0; pass < 2; pass++) {
+        for (k = 0; k < g_drawn_n[last]; k++) {
+            const Drawn *d = &g_drawn[last][k];
+            float slack = !pass ? 0.0f : d->kind == DR_HINT ? 4.0f : 6.0f;
 
-        if (d->kind != DR_ARROW &&
-            n_under(d->place, d->x0, d->y0, d->x1, d->y1, d->kind == DR_HINT ? 4.0f : 6.0f))
-            return d;
+            if (d->kind != DR_ARROW && n_under(d->place, d->x0, d->y0, d->x1, d->y1, slack))
+                return d;
+        }
     }
     return NULL;
 }
