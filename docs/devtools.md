@@ -3,8 +3,8 @@
 Tools for setting up a test scene and holding it still: god mode, infinite
 ammo, invisibility to enemies, every unlock, stopping the game's clock or
 changing its speed, a readout of where you are and what the crosshair is
-on, saving and returning to a position, a free camera, noclip, room
-culling switched off, a wireframe view, hiding the HUD and giving yourself any weapon or item, all
+on, saving and returning to a position, a free camera, noclip, room and
+object culling switched off, a wireframe view, hiding the HUD and giving yourself any weapon or item, all
 from a menu on screen. They are TimeSplitters 2's own
 (`src/ts2_devtools.c`); the toolkit only supplies the keyboard, the overlay's
 lines and the pad. USA release only for now, apart from unlock everything, which
@@ -33,6 +33,7 @@ TS2 DEV MENU
   Free camera              off
   Noclip                   off
   Room culling             < auto >
+  Object culling           ON
   Save position
   Back to saved position
   Wireframe                off
@@ -60,6 +61,7 @@ per line, or set the environment variable beside it:
 | `ts2_give_item = 11` | `RECOMP_TS2_GIVE_ITEM` | The item "Give item" starts on (its number in the game's item list) |
 | `ts2_teleport = x,y,z[,yaw,pitch]` | `RECOMP_TS2_TELEPORT` | Where you are put once the first level is playing |
 | `ts2_room_culling = auto` | `RECOMP_TS2_ROOM_CULLING` | Room culling: `auto` (the default) is the game's own, switched off while the free camera or noclip is on; `off` draws every room all the time; `on` keeps the game's even with those tools |
+| `ts2_object_culling = 0` | `RECOMP_TS2_OBJECT_CULLING` | Object culling off: props, doors, characters and pickups are drawn even when the game finds them off screen or behind the camera |
 | `ts2_dev_seq = FRAME:ACTION,...` | `RECOMP_TS2_DEV_SEQ` | The menu's actions at given frames (below) |
 | | `RECOMP_TS2_POSITIONS` | Where saved positions are kept (default `ts2_positions.txt` beside the executable) |
 
@@ -87,6 +89,16 @@ that reuses one space for two rooms that are never seen together (Siberia's
 lowest tunnel and the room above it) shows both there, which is why it is
 not the default in normal play. `ALLROOMS` in the readout means every room
 is being drawn.
+
+**Object culling.** Before it draws a room's objects (props, doors,
+characters, pickups), the game skips each one whose box is wholly behind the
+camera or off the part of the screen its rooms take. Nobody playing sees it,
+but a renderer that lights the scene from what is off screen does: a door
+just out of view goes, and the light behind it comes into the room. The
+menu's **Object culling** switched off draws them anyway. It stays as you
+set it whatever the free camera and noclip do, and it does not draw the
+objects of rooms that are not drawn: switch room culling off as well for
+every object in the level. `ALLOBJECTS` in the readout means it is off.
 
 **Noclip.** You move with your usual controls, through walls, along the
 direction you are looking: look up and push forward to climb. God mode stays
@@ -122,7 +134,8 @@ RECOMP_TS2_DEV_SEQ=4200:freeze,4210:freecam,4600:step,4700:freeze,4710:freecam
 
 The actions are `readout god ammo invisible unlock save load freecam noclip
 freeze step wireframe faster slower menu hud give itemnext itemprev culling
-cullingprev` (`culling` steps room culling auto, off, on). The free camera and noclip read controller 1, so
+cullingprev objculling` (`culling` steps room culling auto, off, on;
+`objculling` switches object culling). The free camera and noclip read controller 1, so
 `RECOMP_INPUT_SEQ` moves them (`<ms>:<control>:<hold ms>`, for example
 `90000:lstick_up:2000,93000:rstick_right:500,94000:rt:800`).
 `ts2_teleport` and a saved position make a test start from the same spot
@@ -187,6 +200,13 @@ how it was found.
   every room is marked as seen across the whole screen, numbered by how many
   portals away it is from the camera's room, the order the game draws in
   (near to far, and far to near for see-through surfaces).
+- **Object culling** is the game's test just before a room's objects are
+  drawn: the eight corners of each object's box are put on screen, and the
+  object is marked culled when all of them are behind the camera or all of
+  them miss the rectangle its rooms take there. With it off, after the test
+  every object of that room it culled is marked drawn, and drawn with
+  clipping, since it is partly or wholly off screen. An object the game has
+  found in no room keeps its mark, as it has no place on screen.
 - **The aim line** calls the game's ray test from the eye along the view. In
   first person the eye is inside your own character, so for that one call
   your character is marked as one the test skips, as the game marks objects

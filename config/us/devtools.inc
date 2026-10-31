@@ -196,4 +196,8 @@ static const Ts2DevAddrs k_ts2_dev = {
      * and a room's objects where their boxes do (sub_0001D860,
      * sub_0014E0F0) (code). */
     0x003534D4, 0x004B33DC, 0x003534D8, 0x00483F28,
+    /* each room's objects: counts, list pointers (code: sub_0014E0F0 and
+     * sub_0014E6F0 index both by room; sub_0014A1C0 adds an object to its
+     * room's list, sub_0014A230 moves it) */
+    0x00496920, 0x00496CA0,
 };

@@ -65,6 +65,17 @@ void sub_00020160(void) { ts2_dev_ray(sub_00020160_gen); }
 extern void sub_0001F450_gen(void);
 void sub_0001F450(void) { ts2_dev_visibility(sub_0001F450_gen); }
 
+/* the object test is sub_0014E0F0(room), cdecl, called by the room draw
+ * sub_0001DA30 for every room it draws, just before that room's objects are
+ * drawn (sub_0014E6F0). It marks an object culled when the corners of its
+ * box are all behind the camera, or all miss its rooms' rectangle on screen.
+ * Wrapped for the debugging tools' object culling switch: off, what it
+ * culled is drawn anyway (a renderer that lights the scene from what is off
+ * screen needs those objects: without them a door just out of view lets the
+ * light outside into its room). */
+extern void sub_0014E0F0_gen(void);
+void sub_0014E0F0(void) { ts2_dev_objects(sub_0014E0F0_gen); }
+
 /* look_at is sub_000E67F0(dst, eye xyz, forward xyz, up xyz), cdecl, all
  * by value: the camera update sub_00035930 builds the view [ctx+0x208] with
  * it at 0x00036D47 (found with RECOMP_WATCH_WRITE on the view matrix).
