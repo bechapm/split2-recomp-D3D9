@@ -34,6 +34,21 @@ typedef struct Ts2MenuAddrs {
     /* The pause menu's pages: the handlers a page screen has for the
      * D-pad's left and right (TS2_MS_LEFT, TS2_MS_RIGHT). */
     uint32_t page_prev, page_next;
+    /* How the menus light what is selected: the item styles (TS2_STYLE_*,
+     * TS2_STYLE_SIZE each, 4 of them) and the sine table the selected line's
+     * pulse is read from (2048 floats, one turn), by the menu state's clock
+     * (TS2_MF_TIME). */
+    uint32_t styles, sine;
+    /* Who draws an arrow or a sprite, by the range its return address is
+     * in: an option's arrows (the item drawing), a pause page's scroll
+     * arrows, its page arrows; and the call that draws a pause page's
+     * "Select" (its A icon beside it). */
+    uint32_t item_draw, item_draw_end;
+    uint32_t scroll_draw, scroll_draw_end;
+    uint32_t page_draw, page_draw_end;
+    uint32_t pause_select;
+    void   (*players)(void);  /* local players, in eax */
+    uint32_t inventory;       /* the pause menu's Inventory page: its screen update */
 } Ts2MenuAddrs;
 
 /* The menu state F (one per local player), a screen S, a panel P and an
@@ -44,7 +59,15 @@ enum {
     TS2_MF_SCREENS    = 0x008,  /* S*[]: the stack of open screens, bottom first */
     TS2_MF_LOCK       = 0x01C,  /* byte: negative while input is held (a transition) */
     TS2_MF_COUNT      = 0x024,  /* int: screens on the stack */
+    TS2_MF_TIME       = 0x29C,  /* float: the menus' clock, in seconds; the pulses run on it */
     TS2_MF_TEXT_Z     = 0x2D4,  /* float: a 3D menu's text, its depth */
+    /* The Inventory page's list, remade by its update each frame
+     * (sub_000D8120): the item selected (an id), how many, their ids. */
+    TS2_MF_INV_SEL    = 0x30C,
+    TS2_MF_INV_COUNT  = 0x318,
+    TS2_MF_INV_IDS    = 0x31C,  /* int[20] */
+
+    TS2_MS_CLASS      = 0x004,  /* its class: +4 its update (sub_000870E0) */
 
     TS2_MS_FLAGS      = 0x008,  /* 1|4: running and shown; 2: takes no input */
     TS2_MS_X          = 0x01C,  /* int: a screen in a level: where it is on screen */
@@ -111,6 +134,26 @@ enum {
     TS2_GLYPHS_H     = 0x10,    /* int: the glyphs' height */
     TS2_FONT_HINTS   = 0x14,    /* the button hints' font */
 };
+
+/* An item style (sub_000F1230 colours an item by its style): r, g, b, a
+ * dwords, 0..127. */
+enum {
+    TS2_STYLE_SIZE      = 0xC0,
+    TS2_STYLE_LIT       = 0x40,   /* the selected line: g, b (r is the pulse) */
+    TS2_STYLE_ARROW_DIM = 0x80,   /* an option's arrows, on a line not selected */
+    TS2_STYLE_ARROW     = 0x90,   /* on the selected line */
+    TS2_STYLE_ARROW_LIT = 0xA0,   /* that way held */
+    TS2_STYLES          = 4,
+};
+
+/* The Inventory page's rows (sub_000D7840, one player): from the panel's
+ * left + 10, a line of font 8 each from its top less its scroll, the one
+ * selected boxed from 5 before to 200 after. */
+enum { TS2_INV_FONT = 8, TS2_INV_X0 = 5, TS2_INV_X1 = 210, TS2_INV_MAX = 20 };
+
+/* Placements, as recomp_manual.c's TS2_UI_* has them. */
+enum { TS2_PLACE_OFF = -1, TS2_PLACE_AUTO = 0, TS2_PLACE_STRETCH, TS2_PLACE_CENTRE,
+       TS2_PLACE_LEFT, TS2_PLACE_RIGHT, TS2_PLACE_SIDE };
 
 enum {
     TS2_MP_FOCUS = 0x2, TS2_MP_SHOWN = 0x4, TS2_MP_CLOSING = 0x20, TS2_MP_HIDDEN = 0x80,

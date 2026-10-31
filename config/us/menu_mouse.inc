@@ -7,6 +7,7 @@
 extern void sub_001C68C0(void);
 extern void sub_001AB030(void);
 extern void sub_001AC170(void);
+extern void sub_00121900(void);
 
 static const Ts2MenuAddrs k_ts2_menu = {
     /* frontend: four menu states of 0x7AC bytes from 0x004AE680, one per
@@ -43,4 +44,29 @@ static const Ts2MenuAddrs k_ts2_menu = {
      * like): the page before (sub_000CC010) and after (sub_000CC0B0). Its
      * arrows are drawn by sub_000D1A00. */
     0x000D19C0, 0x000D19E0,
+    /* styles, sine: sub_000F1230 colours an item by its style, the block at
+     * 0x002D1538 + style * 0xC0 (dwords r, g, b, a). The line selected is
+     * (pulse, [+0x44], [+0x48], [+0x4C]), pulse = ((sin + 1) * 0.3 + 0.4) * 127
+     * with sin = [0x00488260 + 4 * (int(clock * 2048 + 0.5) & 0x7FF)], the
+     * clock [F + 0x29C] (0x000F136C); an option's arrows are [+0x90] on the
+     * selected line and [+0xA0] while that way is held (0x000F1676). */
+    0x002D1538, 0x00488260,
+    /* item_draw: sub_000F1230, the item drawing, which draws an option's
+     * arrows. scroll_draw: sub_000CCCB0, a pause page's scroll arrows (from
+     * the Inventory, Status and Briefing drawings, sub_000D7840,
+     * sub_000D8F30, sub_000D92D0). page_draw: sub_000D1A00, its page arrows,
+     * each through sub_001B75A0. pause_select: the return from the
+     * sub_001ACA50 call in sub_000CD030 that draws a pause page's "Select"
+     * (text 2123), right-aligned, its A icon drawn after it to its left. */
+    0x000F1230, 0x000F18F2,
+    0x000CCCB0, 0x000CCEB4,
+    0x000D1A00, 0x000D1DD0,
+    0x000CD10F,
+    /* players: sub_00121900, the number of local players (the pause pages
+     * lay themselves out for it). inventory: sub_000D8120, the Inventory
+     * page's update (its screen's class names it at +4, as sub_000870E0 calls it):
+     * it moves [F+0x30C] through the ids at [F+0x31C] with the D-pad's up
+     * and down (F+0x18 bits 4, 8), plays the move sound, and on A or Start
+     * takes the item selected and closes the pause menu (sub_000D2520). */
+    sub_00121900, 0x000D8120,
 };

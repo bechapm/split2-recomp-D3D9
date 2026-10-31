@@ -21,9 +21,17 @@
  *     stepped with left and right (an option) a click on the value's left
  *     half or the arrow before it steps it back, on its right half or the
  *     arrow after it on; on its name, A if it has an action, else on;
- *   - a click on a button hint under the panel ("A Select  B Back") is that
- *     button; on a pause menu page's arrows, the D-pad's left or right,
- *     which changes page;
+ *   - a click on a button hint ("A Select  B Back", under a panel or in
+ *     it, or a pause page's "Select") is that button; on a pause menu
+ *     page's arrows, the D-pad's left or right, which changes page; on a
+ *     page's scroll arrow, the D-pad's up or down for as long as it is
+ *     held, which scrolls it;
+ *   - the hint, option arrow or page arrow under the pointer is lit as the
+ *     game lights the line selected: the hint and the page arrows pulse
+ *     white to cyan, an option's arrow between its own shade and the one
+ *     it has while that way is held;
+ *   - on the pause menu's Inventory page, the pointer selects the row it
+ *     moves onto and a click takes it (the game's Select);
  *   - the right button is B (back), and the wheel the D-pad's up and down,
  *     which scrolls a long list.
  *
@@ -32,15 +40,20 @@
  * any time, in a level only while the game is paused (the pause menu). The
  * front end keeps the pointer through the gaps between its screens, and a
  * screen there with nothing to select takes a click as Start (Select
- * Controller, Enter Name, whose letters are not items). In a level the mouse
- * goes back to the camera when the menu closes. The debugging tools' menu
- * (ts2_mouse_hold) puts all of this aside.
+ * Controller, Enter Name, whose letters are not items). The pause menu is
+ * left only by the keys that leave it and by its own Continue: a click on
+ * nothing does nothing there, and the right button is B only on a screen
+ * opened from a page (Start or B on a page closes the menu). In a level the
+ * mouse goes back to the camera when the menu closes. The debugging tools'
+ * menu (ts2_mouse_hold) puts all of this aside.
  *
  * The pause menu's lines are 3D text on a moving mesh, with no box of their
  * own: see n_box_3d.
  *
- * Where the hints and an option's value and arrows are is the game's own
- * layout, measured with its own text width (sub_001AC170), called here.
+ * Where an option's value is, is the game's own layout, measured with its
+ * own text width (sub_001AC170), called here. Where the hints and the
+ * arrows are is what the game drew last frame: the drawing hooks below see
+ * each one go by (with the placement of the site that drew it) and note it.
  *
  * A cutscene is skipped by a click: in the front end, a click with no
  * screen up; in a level, src/ts2_mouse.c (where the left button is fire).
@@ -50,8 +63,8 @@
  * In widescreen the menus are drawn in proportion, in the middle 4:3 of the
  * picture (k_ts2_ui_places has every panel and item site as CENTRE), so a
  * pointer over a 16:9 picture is measured from the middle; over a 4:3 one
- * it is the picture. The button hints go to the left edge (LEFT), so they
- * are measured from it.
+ * it is the picture. What the hooks note is measured the way its site is
+ * placed (the hints under a panel go to the left edge, LEFT).
  *
  * A scripted run's window has no pointer, so RECOMP_TS2_POINTER_SEQ moves
  * one: "FRAME:X:Y" puts it at X, Y in the game's 640x480 menu pixels at
@@ -132,7 +145,36 @@ static struct {
     WORD     skip;           /* RECOMP_TS2_SKIP_BUTTON */
     int      skip_analog;
     int      skip_read;
+    /* The pointer as the drawing hooks measure what they draw against it:
+     * in menu pixels, as the middle 4:3 (px), the left edge (pxl), the
+     * right edge (pxr) and the whole picture (pxs) place it. */
+    int      pin;
+    float    px, pxl, pxr, pxs, py;
+    WORD     scroll_held;    /* a scroll arrow held down: the D-pad way it scrolls */
+    int      players;        /* local players, this frame */
 } N;
+
+/* ── what the menus drew ─────────────────────────────────────── */
+
+/* Each frame the drawing hooks (ts2_menu_text, ts2_menu_arrow,
+ * ts2_menu_sprite) note where the hints and arrows went, in the game's
+ * 640x480 pixels and with their call site's placement, and light the one
+ * under the pointer as they draw it. The frame after, a click is measured
+ * against what was drawn: whatever the screen, whichever layout. */
+enum { DR_HINT, DR_ARROW, DR_SCROLL, DR_PAGE };
+
+typedef struct Drawn {
+    uint8_t kind;
+    int8_t  place;           /* TS2_PLACE_* */
+    int8_t  dir;             /* DR_ARROW, DR_SCROLL: TS2_ARROW_*; DR_PAGE: -1 before, 1 after */
+    uint8_t button;          /* DR_HINT: 1 B, 2 A */
+    float   x0, y0, x1, y1;
+} Drawn;
+
+#define DRAWN_MAX 48
+static Drawn g_drawn[2][DRAWN_MAX];
+static int   g_drawn_n[2];
+static int   g_drawn_cur;        /* being drawn; the other is the frame before */
 
 static int n_ptr_ok(uint32_t a)
 {
@@ -438,101 +480,383 @@ static int n_option_side(uint32_t p, uint32_t i, float x)
     return 0;
 }
 
-/* The button hint under (x, y) -- x measured from the picture's left edge,
- * where the hints are -- as sub_000EFEB0 lays out the hints of the panel
- * with the focus: from x 50 on its line, each as wide as it draws and 20
- * after it, onto a new line at x 40 when one would pass x 630; the first
- * (A) is left out, though its room is kept, while the item selected has no
- * A to press. Returns the button the hint shows by its glyph (1 B, 2 A),
- * 0 for none. */
-static int n_hint_at(uint32_t s, float x, float y)
+/* The sound the menus make when the selection moves (sub_000F1900). */
+static void n_move_sound(void)
 {
-    uint32_t p;
-    int n;
+    if (A->play_sound && A->sound_on && N_MEM32(A->sound_on) && n_ptr_ok(N_MEM32(A->sounds))) {
+        uint32_t args[2];
 
-    for (p = N_MEM32(s + TS2_MS_PANELS), n = 0; n_ptr_ok(p) && n < 32;
-         p = N_MEM32(p + TS2_MP_NEXT), n++) {
-        uint32_t f = N_MEM32(p + TS2_MP_FLAGS), cur = 0;
-        int count = N_MEMI(p + TS2_MP_HINTS), k;
-        float hx = 50.0f, hy = (float)N_MEMI(p + TS2_MP_HINT_Y);
-        float h = n_font_height(TS2_FONT_HINTS);
+        args[0] = N_MEM32(N_MEM32(A->sounds));
+        args[1] = 0;
+        n_guest_call(A->play_sound, args, 2);
+    }
+}
 
-        if (!(f & TS2_MP_SHOWN) || (f & (TS2_MP_HIDDEN | TS2_MP_CLOSING)) ||
-            !(f & TS2_MP_FOCUS) || count <= 0 || count > 8 || h <= 0.0f)
-            continue;
-        if (N_MEMI(p + TS2_MP_ROW) >= 0)
-            cur = n_item_at(p, N_MEMI(p + TS2_MP_ROW), N_MEMI(p + TS2_MP_COLUMN));
-        for (k = 0; k < count; k++) {
-            uint32_t str = p + TS2_MP_HINT_TEXT + 0x80u * (uint32_t)k;
-            int w = n_text_width(TS2_FONT_HINTS, str), j;
+/* ── the drawing hooks ───────────────────────────────────────── */
 
-            if (w < 0)
-                return 0;
-            if (k == 0 && cur &&
-                ((N_MEM32(cur + TS2_MI_FLAGS) & TS2_MI_FIXED) ||
-                 (!N_MEM32(cur + TS2_MI_ACTION) && (f & TS2_MP_NO_EMPTY_A)))) {
-                hx += (float)w + 20.0f;
+static void n_drawn_add(int kind, int place, int dir, int button,
+                        float x0, float y0, float x1, float y1)
+{
+    Drawn *d;
+
+    if (g_drawn_n[g_drawn_cur] >= DRAWN_MAX)
+        return;
+    d = &g_drawn[g_drawn_cur][g_drawn_n[g_drawn_cur]++];
+    d->kind = (uint8_t)kind;
+    d->place = (int8_t)place;
+    d->dir = (int8_t)dir;
+    d->button = (uint8_t)button;
+    d->x0 = x0;
+    d->y0 = y0;
+    d->x1 = x1;
+    d->y1 = y1;
+}
+
+/* Whether the pointer is over a box drawn with this placement, slack
+ * pixels around it. A site with no placement of its own is put where the
+ * renderer's width guess puts it -- the middle 4:3 or the whole picture --
+ * so either will do. */
+static int n_under(int place, float x0, float y0, float x1, float y1, float slack)
+{
+    float x;
+
+    if (!N.pin || N.py < y0 - slack || N.py >= y1 + slack)
+        return 0;
+    switch (place) {
+    case TS2_PLACE_OFF:
+    case TS2_PLACE_CENTRE:  x = N.px;  break;
+    case TS2_PLACE_LEFT:    x = N.pxl; break;
+    case TS2_PLACE_RIGHT:   x = N.pxr; break;
+    case TS2_PLACE_STRETCH: x = N.pxs; break;
+    default:
+        return (N.px >= x0 - slack && N.px < x1 + slack) ||
+               (N.pxs >= x0 - slack && N.pxs < x1 + slack);
+    }
+    return x >= x0 - slack && x < x1 + slack;
+}
+
+/* The game's pulse: its sine table at its menu clock, -1..1, as the
+ * selected line reads it (sub_000F1230). */
+static float n_wave(void)
+{
+    float t;
+    uint32_t i;
+
+    if (!A->sine)
+        return 0.0f;
+    t = N_MEMF(A->frontend + TS2_MF_TIME);
+    if (!(t >= 0.0f && t < 1.0e6f))
+        return 0.0f;
+    i = (uint32_t)(int32_t)(t * 6.2831855f * 325.94931f + 0.5f) & 0x7FFu;
+    return N_MEMF(A->sine + 4u * i);
+}
+
+static uint32_t n_rgb(uint32_t c)
+{
+    return (N_MEM32(c) & 0xFFu) << 16 | (N_MEM32(c + 4) & 0xFFu) << 8 | (N_MEM32(c + 8) & 0xFFu);
+}
+
+/* A colour (r, g, b, a bytes, high to low) lit the way the game lights the
+ * line selected: red pulsing between 51 and 127 over the style's green and
+ * blue, white to cyan and back once a second. Its alpha is kept. */
+static uint32_t n_lit(uint32_t colour)
+{
+    float s = n_wave();
+    uint32_t r = (uint32_t)(int)(((s + 1.0f) * 0.3f + 0.4f) * 127.0f) & 0xFFu;
+    uint32_t g = 120, b = 120;
+
+    if (A->styles) {
+        uint32_t st = A->styles + TS2_STYLE_SIZE;     /* style 1, the panels' */
+
+        g = N_MEM32(st + TS2_STYLE_LIT + 4) & 0xFFu;
+        b = N_MEM32(st + TS2_STYLE_LIT + 8) & 0xFFu;
+    }
+    return r << 24 | g << 16 | b << 8 | (colour & 0xFFu);
+}
+
+/* An option's arrow lit: its own shade and the shade it has while that way
+ * is held, in turn on the same pulse. Its style is the one whose arrow
+ * shade it is drawn in. */
+static uint32_t n_arrow_lit(uint32_t colour)
+{
+    int s, k, j;
+
+    for (s = 0; A->styles && s < TS2_STYLES; s++) {
+        uint32_t st = A->styles + (uint32_t)s * TS2_STYLE_SIZE;
+
+        for (k = 0; k < 2; k++) {
+            uint32_t c = st + (k ? TS2_STYLE_ARROW_DIM : TS2_STYLE_ARROW);
+            uint32_t lit = st + TS2_STYLE_ARROW_LIT, out = 0;
+            float w = (n_wave() + 1.0f) * 0.5f;
+
+            if (n_rgb(c) != (colour >> 8) || n_rgb(c) == n_rgb(lit))
                 continue;
-            }
-            if (hx + (float)w > 630.0f) {
-                hy = (float)(int)(hy + h + 4.0f);
-                hx = 40.0f;
-            }
-            if (N.log) {
-                char t[32];
+            for (j = 0; j < 3; j++) {
+                float from = (float)(N_MEM32(c + 4u * (uint32_t)j) & 0xFFu);
+                float to = (float)(N_MEM32(lit + 4u * (uint32_t)j) & 0xFFu);
 
-                for (j = 0; j < 31 && N_MEM8(str + (uint32_t)j); j++)
-                    t[j] = N_MEM8(str + (uint32_t)j) < 0x20 ? '~' : (char)N_MEM8(str + (uint32_t)j);
-                t[j] = 0;
-                fprintf(stderr, "[TS2-MENU]   hint %d \"%s\" at %.0f,%.0f, %d by %.0f; the click is at %.0f,%.0f\n",
-                        k, t, hx, hy, w, h, x, y);
+                out = out << 8 | ((uint32_t)(int)(from + (to - from) * w) & 0xFFu);
             }
-            if (x >= hx - 4.0f && x < hx + (float)w + 4.0f && y >= hy - 4.0f && y < hy + h + 4.0f) {
-                for (j = 0; j < 0x7F && N_MEM8(str + (uint32_t)j); j++)
-                    if (N_MEM8(str + (uint32_t)j) == 0x0B) {
-                        int8_t g = N_MEM8(str + (uint32_t)j + 1u);
-
-                        return g == '1' ? 1 : g == '2' ? 2 : 0;
-                    }
-                return 0;
-            }
-            hx += (float)w + 20.0f;
+            return out << 8 | (colour & 0xFFu);
         }
     }
-    return 0;
+    return n_lit(colour);
 }
 
-/* A pause menu page's arrows under (x, y): -1 the page before, 1 after.
- * sub_000D1A00 draws them 32 by 28 (one player), centred 62 below the
- * screen's place and 64 in from either side of its 640. The screen slides
- * in, so its place is read as it is now: (0, 49) once settled. Whether there
- * is such a page is the game's to say when the D-pad asks.
- *
- * In widescreen they have no place of their own in k_ts2_ui_places (their
- * draw shares a site with others), so the width guess decides: one arrow
- * alone goes in the middle 4:3 with the menus, two together fill the width
- * and are stretched. x is the pointer as the menus measure it, xs as a
- * stretched picture does; either will do. */
-static int n_arrow_near(float x, float xs, float at)
+void ts2_menu_arrow(int dir)
 {
-    return fabsf(x - at) <= 16.0f + 6.0f || fabsf(xs - at) <= 16.0f + 6.0f;
+    uint32_t a = g_esp, ret;
+    float x0, y0, x1, y1;
+    int kind, place;
+
+    if (!N.want || !A->frontend)
+        return;
+    ret = N_MEM32(a);
+    if (ret >= A->item_draw && ret < A->item_draw_end) {
+        kind = DR_ARROW;
+        place = TS2_PLACE_CENTRE;            /* beside its value, in the panel */
+    } else if (ret >= A->scroll_draw && ret < A->scroll_draw_end) {
+        kind = DR_SCROLL;
+        place = TS2_PLACE_AUTO;
+    } else {
+        return;
+    }
+    x0 = (float)N_MEMI(a + 4);
+    y0 = (float)N_MEMI(a + 8);
+    x1 = (float)N_MEMI(a + 12);
+    y1 = (float)N_MEMI(a + 16);
+    n_drawn_add(kind, place, dir, 0, x0, y0, x1, y1);
+    if (n_under(place, x0, y0, x1, y1, 4.0f))
+        N_MEM32(a + 20) = kind == DR_ARROW ? n_arrow_lit(N_MEM32(a + 20)) : n_lit(N_MEM32(a + 20));
 }
 
-static int n_page_arrow(uint32_t s, float x, float xs, float y)
+void ts2_menu_sprite(void)
 {
-    float sx, sy;
+    uint32_t a = g_esp, ret;
+    float x0, y0, x1, y1;
 
-    if (!A->page_prev || N_MEM32(A->level_id) >= A->level_menus)
-        return 0;
-    sx = (float)N_MEMI(s + TS2_MS_X);
-    sy = (float)N_MEMI(s + TS2_MS_Y) + 62.0f;
-    if (fabsf(y - sy) > 14.0f + 6.0f)
-        return 0;
-    if (N_MEM32(s + TS2_MS_LEFT) == A->page_prev && n_arrow_near(x, xs, sx + 64.0f))
+    if (!N.want || !A->page_draw)
+        return;
+    ret = N_MEM32(a);
+    if (ret < A->page_draw || ret >= A->page_draw_end)
+        return;
+    x0 = (float)N_MEMI(a + 4);
+    y0 = (float)N_MEMI(a + 8);
+    x1 = (float)N_MEMI(a + 12);
+    y1 = (float)N_MEMI(a + 16);
+    n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, x0 + x1 < TS2_MENU_W ? -1 : 1, 0, x0, y0, x1, y1);
+    if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 6.0f))
+        N_MEM32(a + 0x24) = n_lit(N_MEM32(a + 0x24));
+}
+
+/* How wide the first n bytes of a string draw in the font selected now. */
+static float n_width_upto(uint32_t str, uint32_t n)
+{
+    int8_t keep;
+    uint32_t w;
+
+    if (!n || !A->text_width)
+        return 0.0f;
+    keep = N_MEM8(str + n);
+    N_MEM8(str + n) = 0;
+    w = n_guest_call(A->text_width, &str, 1);
+    N_MEM8(str + n) = keep;
+    return w < 4096u ? (float)w : 0.0f;
+}
+
+/* Draws a line in three parts -- before the lit hint, the hint, after it --
+ * each a call of the text function on that part, the hint in n_lit. The
+ * arguments are put back before each call; the line is cut by a 0 written
+ * after the part and taken away after. Leaves the stack as one call does. */
+static void n_text_parts(void (*draw)(void), int form, int si, int ci, uint32_t str,
+                         uint32_t len, uint32_t b0, uint32_t b1, float x)
+{
+    uint32_t e0 = g_esp, keep[6], cut[3][2];
+    float at = x;
+    int k, j;
+
+    cut[0][0] = 0;  cut[0][1] = b0;
+    cut[1][0] = b0; cut[1][1] = b1;
+    cut[2][0] = b1; cut[2][1] = len;
+    for (j = 0; j < 6; j++)
+        keep[j] = N_MEM32(e0 + 4u + 4u * (uint32_t)j);
+    for (k = 0; k < 3; k++) {
+        uint32_t p0 = cut[k][0], p1 = cut[k][1];
+        int8_t end;
+        float w;
+
+        if (p1 <= p0)
+            continue;
+        for (j = 0; j < 6; j++)
+            N_MEM32(e0 + 4u + 4u * (uint32_t)j) = keep[j];
+        w = n_width_upto(str + p0, p1 - p0);
+        end = N_MEM8(str + p1);
+        N_MEM8(str + p1) = 0;
+        N_MEM32(e0 + 4u * (uint32_t)si) = str + p0;
+        if (k == 1)
+            N_MEM32(e0 + 4u * (uint32_t)ci) = n_lit(keep[ci - 1]);
+        if (form != TS2_TEXT_AT_INT)
+            N_MEMF(e0 + 4u) = at;               /* the int form moves its own x */
+        g_esp = e0;
+        draw();
+        N_MEM8(str + p1) = end;
+        at += w;
+    }
+    for (j = 0; j < 6; j++)
+        N_MEM32(e0 + 4u + 4u * (uint32_t)j) = keep[j];
+    g_esp = e0 + 4u;
+}
+
+void ts2_menu_text(void (*draw)(void), int form, int place)
+{
+    uint32_t a = g_esp, str, len, k, hot0 = 0, hot1 = 0;
+    int si = form == TS2_TEXT_AT_ALIGN ? 4 : 3, ci = si + 1, hot = 0;
+    float x, y, h;
+
+    if (!N.want || !A->frontend || !A->text_width) {
+        draw();
+        return;
+    }
+    str = N_MEM32(a + 4u * (uint32_t)si);
+    if (!n_ptr_ok(str)) {
+        draw();
+        return;
+    }
+    if (form == TS2_TEXT_AT_INT) {
+        uint32_t xp = N_MEM32(a + 4), yp = N_MEM32(a + 8);
+
+        if (!n_ptr_ok(xp) || !n_ptr_ok(yp)) {
+            draw();
+            return;
+        }
+        x = (float)N_MEMI(xp);
+        y = (float)N_MEMI(yp);
+    } else {
+        x = N_MEMF(a + 4);
+        y = N_MEMF(a + 8);
+    }
+    h = n_font_height(N_MEM32(A->font_now));
+
+    /* A pause page's "Select": the text, and its A icon before it. */
+    if (form == TS2_TEXT_AT && A->pause_select && N_MEM32(a) == A->pause_select) {
+        float w, x0 = x - 24.0f;
+
+        for (len = 0; len < 0x7F && N_MEM8(str + len); len++)
+            ;
+        w = n_width_upto(str, len);
+        n_drawn_add(DR_HINT, place, 0, 2, x0, y - 2.0f, x + w, y + h);
+        if (n_under(place, x0, y - 2.0f, x + w, y + h, 3.0f))
+            N_MEM32(a + 4u * (uint32_t)ci) = n_lit(N_MEM32(a + 4u * (uint32_t)ci));
+        draw();
+        return;
+    }
+    /* A centred or right-aligned line is not a hint line. */
+    if (form == TS2_TEXT_AT_ALIGN && N_MEMI(a + 12) != 0) {
+        draw();
+        return;
+    }
+    for (len = 0; len < 0x7F && N_MEM8(str + len); len++)
+        ;
+    /* Each hint runs from a button glyph (\x0b and a digit) to the next. */
+    for (k = 0; k + 1 < len; k++) {
+        uint32_t e, t;
+        int8_t g;
+        int button;
+        float x0, x1;
+
+        if (N_MEM8(str + k) != 0x0B)
+            continue;
+        g = N_MEM8(str + k + 1u);
+        button = g == '1' ? 1 : g == '2' ? 2 : 0;
+        for (e = k + 2u; e < len && N_MEM8(str + e) != 0x0B; e++)
+            ;
+        if (button) {
+            for (t = e; t > k + 2u && N_MEM8(str + t - 1u) == ' '; t--)
+                ;
+            x0 = x + n_width_upto(str, k);
+            x1 = x + n_width_upto(str, t);
+            n_drawn_add(DR_HINT, place, 0, button, x0, y, x1, y + h);
+            if (!hot && n_under(place, x0, y, x1, y + h, 4.0f)) {
+                hot = 1;
+                hot0 = k;
+                hot1 = e;
+            }
+        }
+        k = e - 1u;
+    }
+    if (!hot) {
+        draw();
+        return;
+    }
+    if (hot0 == 0 && hot1 >= len) {
+        N_MEM32(a + 4u * (uint32_t)ci) = n_lit(N_MEM32(a + 4u * (uint32_t)ci));
+        draw();
+        return;
+    }
+    n_text_parts(draw, form, si, ci, str, len, hot0, hot1, x);
+}
+
+/* The thing drawn last frame under the pointer that a click works: a hint,
+ * a page's arrow, a scroll arrow (not an option's arrow: the item under it
+ * takes that click). */
+static const Drawn *n_drawn_under(void)
+{
+    int last = g_drawn_cur ^ 1, k;
+
+    for (k = 0; k < g_drawn_n[last]; k++) {
+        const Drawn *d = &g_drawn[last][k];
+
+        if (d->kind != DR_ARROW &&
+            n_under(d->place, d->x0, d->y0, d->x1, d->y1, d->kind == DR_HINT ? 4.0f : 6.0f))
+            return d;
+    }
+    return NULL;
+}
+
+/* ── the pause menu's Inventory page ─────────────────────────── */
+
+/* The row of the Inventory list under (x, y), wholly in view, or -1: the
+ * rows as sub_000D7840 draws them for one player. */
+static int n_inventory_row(uint32_t s, float x, float y)
+{
+    uint32_t f = A->frontend, p = N_MEM32(s + TS2_MS_PANELS), cls = N_MEM32(s + TS2_MS_CLASS);
+    int count = N_MEMI(f + TS2_MF_INV_COUNT), row;
+    float h, top, py0, py1, px0;
+
+    if (!A->inventory || !n_ptr_ok(p) || !n_ptr_ok(cls) || N_MEM32(cls + 4) != A->inventory ||
+        N.players != 1 || count <= 0 || count > TS2_INV_MAX)
         return -1;
-    if (N_MEM32(s + TS2_MS_RIGHT) == A->page_next && n_arrow_near(x, xs, sx + 576.0f))
-        return 1;
-    return 0;
+    h = (float)(int)n_font_height(TS2_INV_FONT);
+    if (h < 4.0f)
+        return -1;
+    px0 = (float)N_MEMI(p + TS2_MP_X);
+    py0 = (float)N_MEMI(p + TS2_MP_Y);
+    py1 = py0 + (float)N_MEMI(p + TS2_MP_H);
+    top = (float)(int)(py0 - N_MEMF(p + TS2_MP_OFFSET));
+    if (x < px0 + TS2_INV_X0 || x >= px0 + TS2_INV_X1 || y < py0 || y >= py1)
+        return -1;
+    row = (int)floorf((y - top) / h);
+    if (row < 0 || row >= count)
+        return -1;
+    if (top + (float)row * h < py0 - 2.0f || top + (float)(row + 1) * h > py1 + 2.0f)
+        return -1;
+    return row;
+}
+
+/* Select a row of the Inventory as its update does when the D-pad moves it:
+ * the id, and the move sound. */
+static void n_inventory_select(int row)
+{
+    uint32_t f = A->frontend;
+    int32_t id = N_MEMI(f + TS2_MF_INV_IDS + 4u * (uint32_t)row);
+
+    if (N_MEMI(f + TS2_MF_INV_SEL) == id)
+        return;
+    N_MEMI(f + TS2_MF_INV_SEL) = id;
+    n_move_sound();
+    if (N.log)
+        fprintf(stderr, "[TS2-MENU] frame %u: the pointer selects inventory row %d (id %d)\n",
+                N.frame, row, id);
 }
 
 /* Select (row, column) in the panel as its update does when the pad moves
@@ -554,30 +878,45 @@ static void n_select(const Hit *h)
     N_MEMI(p + TS2_MP_ROW) = h->row;
     N_MEMI(p + TS2_MP_COLUMN) = h->col;
     N_MEM32(now + TS2_MI_FLAGS) |= TS2_MI_SELECTED;
-
-    if (A->play_sound && A->sound_on && N_MEM32(A->sound_on) && n_ptr_ok(N_MEM32(A->sounds))) {
-        uint32_t args[2];
-
-        args[0] = N_MEM32(N_MEM32(A->sounds));
-        args[1] = 0;
-        n_guest_call(A->play_sound, args, 2);
-    }
+    n_move_sound();
     if (N.log)
         fprintf(stderr, "[TS2-MENU] frame %u: the pointer selects row %d column %d "
                         "(panel %08X item %08X)\n", N.frame, h->row, h->col, p, h->item);
 }
 
+/* The log: what was drawn last frame that the pointer can work, when that
+ * changes. */
+static void n_log_drawn(void)
+{
+    static int said = -1;
+    int last = g_drawn_cur ^ 1, k;
+
+    if (g_drawn_n[last] == said)
+        return;
+    said = g_drawn_n[last];
+    fprintf(stderr, "[TS2-MENU] frame %u: %d drawn to work\n", N.frame, said);
+    for (k = 0; k < g_drawn_n[last]; k++) {
+        static const char *const kinds[] = { "hint", "option arrow", "scroll arrow", "page arrow" };
+        const Drawn *d = &g_drawn[last][k];
+
+        fprintf(stderr, "[TS2-MENU]   %s (placement %d, way %d, button %d) %.0f,%.0f-%.0f,%.0f\n",
+                kinds[d->kind], d->place, d->dir, d->button, d->x0, d->y0, d->x1, d->y1);
+    }
+}
+
 /* The log: a screen's panels and items, once each time the screen changes. */
 static void n_log_screen(uint32_t s)
 {
-    uint32_t p, i;
+    uint32_t p, i, cls = N_MEM32(s + TS2_MS_CLASS);
     int n, k, count;
 
-    fprintf(stderr, "[TS2-MENU] frame %u: screen %08X (flags 0x%X, %d on the stack), level %u, "
-                    "at %d,%d, left %08X right %08X\n",
+    fprintf(stderr, "[TS2-MENU] frame %u: screen %08X (flags 0x%X, %d on the stack, update %08X), "
+                    "level %u, at %d,%d, left %08X right %08X\n",
             N.frame, s, N_MEM32(s + TS2_MS_FLAGS), N_MEMI(A->frontend + TS2_MF_COUNT),
-            N_MEM32(A->level_id), N_MEMI(s + TS2_MS_X), N_MEMI(s + TS2_MS_Y),
+            n_ptr_ok(cls) ? N_MEM32(cls + 4) : 0, N_MEM32(A->level_id),
+            N_MEMI(s + TS2_MS_X), N_MEMI(s + TS2_MS_Y),
             N_MEM32(s + TS2_MS_LEFT), N_MEM32(s + TS2_MS_RIGHT));
+
     for (p = N_MEM32(s + TS2_MS_PANELS), n = 0; n_ptr_ok(p) && n < 32;
          p = N_MEM32(p + TS2_MP_NEXT), n++) {
         float cl, ct, cr, cb;
@@ -708,12 +1047,21 @@ static void n_to_menu(const RecompPointer *ptr, float *x, float *y)
     *y = ptr->y * TS2_MENU_H;
 }
 
-/* x for what is drawn at the left edge in widescreen (LEFT). */
+/* x for what is drawn at the left edge in widescreen (LEFT), and at the
+ * right edge (RIGHT). */
 static float n_to_menu_left(const RecompPointer *ptr)
 {
     float aspect = ptr->aspect > 0.1f ? ptr->aspect : 4.0f / 3.0f;
 
     return aspect > 4.0f / 3.0f + 0.01f ? ptr->x * TS2_MENU_H * aspect : ptr->x * TS2_MENU_W;
+}
+
+static float n_to_menu_right(const RecompPointer *ptr)
+{
+    float aspect = ptr->aspect > 0.1f ? ptr->aspect : 4.0f / 3.0f;
+
+    return aspect > 4.0f / 3.0f + 0.01f ? TS2_MENU_W - (1.0f - ptr->x) * TS2_MENU_H * aspect
+                                        : ptr->x * TS2_MENU_W;
 }
 
 static void n_press_skip(const char *where)
@@ -731,10 +1079,15 @@ void ts2_menu_frame(void)
     RecompPointer ptr;
     uint32_t s, top;
     Hit hit;
-    float x = 0.0f, y = 0.0f, xl = 0.0f;
-    int over, moved, side;
+    float x = 0.0f, y = 0.0f;
+    int over, moved, side, row, in_level, stacked;
 
     N.frame++;
+    /* What was drawn this frame is measured against from now on, and the
+     * next frame is noted afresh. */
+    g_drawn_cur ^= 1;
+    g_drawn_n[g_drawn_cur] = 0;
+    N.pin = 0;
     if (!A->frontend)
         return;
     if (!N.started) {
@@ -750,13 +1103,13 @@ void ts2_menu_frame(void)
         N.seq_hold_until = 0;
     }
 
+    in_level = N_MEM32(A->level_id) < A->level_menus;
     s = n_menu();
     /* In the front end the pointer stays through the gaps between screens
      * and on the screens with nothing to select, and in a level it stays
-     * as long as the game is paused (the pause menu's Inventory page has no
+     * as long as the game is paused (the pause menu's pages that have no
      * lines to select); otherwise the mouse goes back to the camera. */
-    if ((!s && N_MEM32(A->level_id) < A->level_menus && !(A->pause && N_MEMI(A->pause) > 0)) ||
-        ts2_mouse_is_held()) {
+    if ((!s && in_level && !(A->pause && N_MEMI(A->pause) > 0)) || ts2_mouse_is_held()) {
         if (N.want) {
             recomp_pointer_want(0);
             N.want = 0;
@@ -766,6 +1119,7 @@ void ts2_menu_frame(void)
         }
         N.screen = 0;
         N.wheel = 0;
+        N.scroll_held = 0;
         return;
     }
     if (!N.want) {
@@ -777,9 +1131,13 @@ void ts2_menu_frame(void)
     top = s ? s : n_top_screen();
     if (N.log && top && top != N.screen)
         n_log_screen(top);
+    if (N.log)
+        n_log_drawn();
     if (top != N.screen)
         N.hover = 0;
     N.screen = top;
+    N.players = A->players ? (int)n_guest_call(A->players, NULL, 0) : 1;
+    stacked = N_MEMI(A->frontend + TS2_MF_COUNT) >= 2;
 
     if (N.seq_on)
         n_seq_place();
@@ -792,56 +1150,106 @@ void ts2_menu_frame(void)
 
     if (ptr.inside) {
         n_to_menu(&ptr, &x, &y);
-        xl = n_to_menu_left(&ptr);
+        N.pin = 1;
+        N.px = x;
+        N.py = y;
+        N.pxl = n_to_menu_left(&ptr);
+        N.pxr = n_to_menu_right(&ptr);
+        N.pxs = ptr.x * TS2_MENU_W;
     }
     if (!top) {
         /* The front end with no screen up: a cutscene, or between two. */
         N.wheel = 0;
-        if ((ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && N.frame >= N.gap_until &&
-            N_MEM32(A->level_id) >= A->level_menus)
+        if ((ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && N.frame >= N.gap_until && !in_level)
             n_press_skip("no screen up");
         return;
     }
     /* Nothing while the screen takes no input (it is opening or closing). */
-    if ((N_MEM32(top + TS2_MS_FLAGS) & 2u) || N_MEM8(A->frontend + TS2_MF_LOCK) < 0)
+    if ((N_MEM32(top + TS2_MS_FLAGS) & 2u) || N_MEM8(A->frontend + TS2_MF_LOCK) < 0) {
+        N.scroll_held = 0;
         return;
+    }
 
-    /* A click on a pause page's arrow, or on a button hint. */
-    if (ptr.inside && (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && N.frame >= N.gap_until) {
-        int hint;
+    /* A scroll arrow scrolls for as long as the button is held on it. */
+    if (N.scroll_held) {
+        const Drawn *d = ptr.inside ? n_drawn_under() : NULL;
 
-        side = n_page_arrow(top, x, ptr.x * TS2_MENU_W, y);
-        if (side) {
-            n_press(side < 0 ? XBOX_GAMEPAD_DPAD_LEFT : XBOX_GAMEPAD_DPAD_RIGHT, 0, 0);
-            if (N.log)
-                fprintf(stderr, "[TS2-MENU] frame %u: click on the page arrow: %s\n", N.frame,
-                        side < 0 ? "left" : "right");
+        if ((ptr.held & (1u << RECOMP_MOUSE_LEFT)) && d && d->kind == DR_SCROLL) {
+            N.buttons = N.scroll_held;
+            N.analog_a = N.analog_b = 0;
+            N.until = N.frame + PRESS_FRAMES;
+            N.gap_until = N.until;
             return;
         }
-        hint = n_hint_at(top, xl, y);
-        if (hint) {
-            n_press(0, hint == 2, hint == 1);
+        N.scroll_held = 0;
+        N.until = N.frame;
+        N.gap_until = N.frame + GAP_FRAMES;
+    }
+
+    /* A click on what was drawn: a hint, a page's arrow, a scroll arrow. */
+    if (ptr.inside && (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && N.frame >= N.gap_until) {
+        const Drawn *d = n_drawn_under();
+
+        if (d && d->kind == DR_PAGE) {
+            n_press(d->dir < 0 ? XBOX_GAMEPAD_DPAD_LEFT : XBOX_GAMEPAD_DPAD_RIGHT, 0, 0);
+            if (N.log)
+                fprintf(stderr, "[TS2-MENU] frame %u: click on the page arrow: %s\n", N.frame,
+                        d->dir < 0 ? "left" : "right");
+            return;
+        }
+        if (d && d->kind == DR_SCROLL) {
+            N.scroll_held = d->dir == TS2_ARROW_UP ? XBOX_GAMEPAD_DPAD_UP : XBOX_GAMEPAD_DPAD_DOWN;
+            n_press(N.scroll_held, 0, 0);
+            if (N.log)
+                fprintf(stderr, "[TS2-MENU] frame %u: click on the scroll arrow: %s\n", N.frame,
+                        d->dir == TS2_ARROW_UP ? "up" : "down");
+            return;
+        }
+        if (d && d->kind == DR_HINT) {
+            n_press(0, d->button == 2, d->button == 1);
             if (N.log)
                 fprintf(stderr, "[TS2-MENU] frame %u: click on the hint: %s\n", N.frame,
-                        hint == 2 ? "A" : "B");
+                        d->button == 2 ? "A" : "B");
             return;
         }
     }
 
-    /* A screen with nothing to select (Select Controller, Enter Name, a
-     * message): the left button is Start, which goes on from them, and the
-     * right button B, so the mouse alone gets through them. */
+    /* The Inventory page: its rows are not items. The pointer selects the
+     * row it moves onto, a click takes it (A: the game's own Select, which
+     * also closes the pause menu). */
+    row = ptr.inside ? n_inventory_row(top, x, y) : -1;
+    if (row >= 0 && (moved || (ptr.pressed & (1u << RECOMP_MOUSE_LEFT))))
+        n_inventory_select(row);
+    if (row >= 0 && (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && N.frame >= N.gap_until) {
+        n_press(0, 1, 0);
+        if (N.log)
+            fprintf(stderr, "[TS2-MENU] frame %u: click on inventory row %d: A\n", N.frame, row);
+        return;
+    }
+
+    /* A screen with nothing to select. In the front end (Select Controller,
+     * Enter Name, a message) the left button is Start, which goes on from
+     * them, and the right button B, so the mouse alone gets through them.
+     * In the pause menu a click on nothing does nothing -- Start or B would
+     * close it -- and the right button is B only on a screen opened from a
+     * page; the wheel is the D-pad's up and down, which scrolls a page. */
     if (!s) {
         if (N.frame < N.gap_until)
             return;
-        if (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) {
+        if ((ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && !in_level) {
             n_press(XBOX_GAMEPAD_START, 0, 0);
             if (N.log)
                 fprintf(stderr, "[TS2-MENU] frame %u: click, nothing to select: Start\n", N.frame);
-        } else if (ptr.pressed & (1u << RECOMP_MOUSE_RIGHT)) {
+        } else if ((ptr.pressed & (1u << RECOMP_MOUSE_RIGHT)) && (!in_level || stacked)) {
             n_press(0, 0, 1);
             if (N.log)
                 fprintf(stderr, "[TS2-MENU] frame %u: right button: B\n", N.frame);
+        } else if (N.wheel && in_level) {
+            n_press(N.wheel > 0 ? XBOX_GAMEPAD_DPAD_UP : XBOX_GAMEPAD_DPAD_DOWN, 0, 0);
+            if (N.log)
+                fprintf(stderr, "[TS2-MENU] frame %u: wheel: D-pad %s\n", N.frame,
+                        N.wheel > 0 ? "up" : "down");
+            N.wheel += N.wheel > 0 ? -1 : 1;
         }
         return;
     }
@@ -881,7 +1289,8 @@ void ts2_menu_frame(void)
         if (N.log)
             fprintf(stderr, "[TS2-MENU] frame %u: click on row %d column %d: %s\n", N.frame,
                     hit.row, hit.col, what);
-    } else if (ptr.pressed & (1u << RECOMP_MOUSE_RIGHT)) {
+    } else if ((ptr.pressed & (1u << RECOMP_MOUSE_RIGHT)) && (!in_level || stacked)) {
+        /* In the pause menu, not on a page itself: B there closes it. */
         n_press(0, 0, 1);
         if (N.log)
             fprintf(stderr, "[TS2-MENU] frame %u: right button: B\n", N.frame);

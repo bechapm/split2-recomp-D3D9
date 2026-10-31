@@ -925,6 +925,16 @@ static void ts2_ui_leave(void)
         g_ts2_depth--;
 }
 
+/* Inside a wrapped drawing function: the placement of the site drawing now
+ * (TS2_UI_*), -1 with widescreen off. The menu pointer measures what it
+ * finds there the way it is shown (ts2_menu_text, src/ts2_menu_mouse.c). */
+static int ts2_ui_place_here(void)
+{
+    if (ts2_ui_mode() <= 0 || g_ts2_depth <= 0)
+        return -1;
+    return ts2_ui_place_for(g_ts2_chain[0]);
+}
+
 /* ── TimeSplitters 2: extra playable characters, declared by mods ── */
 
 /*
