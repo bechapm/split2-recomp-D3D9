@@ -121,10 +121,18 @@ picture, since the matrix that lays the text out is gone by the present
 (`n_box_3d`). The pointer stays through the front end's gaps between screens
 and for as long as the game is paused; a screen with nothing to select (Select
 Controller, Enter Name, the Inventory page) takes a click as Start and the
-right button as B. Not yet: the PAL release; Enter Name's letters; changing the
-pause menu's pages by mouse; skipping the front end's cutscenes by click; and
-MapMaker's grid cursor. Tested by scripted pointer, not yet by hand. The plan
-below is how it looked before.
+right button as B. A click on an option's value steps it the way of the half
+it is on (or of the arrow), laid out as `sub_000F1230` draws it; a click on a
+button hint is its button, laid out as `sub_000EFEB0` draws them; a click on a
+pause page's arrow (`sub_000D1A00`) is the D-pad's left or right. Both are
+measured with the game's own text width (`sub_001AC170`), called from the
+present. A click skips a cutscene: in the front end with no screen up, and in
+a level while the camera is not the player's eye (`src/ts2_mouse.c`), as the
+button `RECOMP_TS2_SKIP_BUTTON` names. Not yet: the PAL release; Enter Name's
+letters; and MapMaker's grid cursor, which the game drives with its own
+pointer: screens keep a list of 0x18-byte hot spots (`S+0x64C`, count
+`S+0x650`) that `sub_00086FE0` tests against a cursor at `F+0x32`/`F+0x36`.
+The plan below is how it looked before.
 
 The toolkit has no mouse input today.
 

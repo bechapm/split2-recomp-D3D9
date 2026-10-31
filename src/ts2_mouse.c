@@ -54,6 +54,12 @@
  *   the menus: while one is up the mouse is a pointer instead, and points
  *     at and clicks their items (src/ts2_menu_mouse.c).
  *
+ *   cutscenes: in a level, while the camera is not player 1's eye (a
+ *     cutscene or a level's fly-over), a click of the left button (fire,
+ *     which skips nothing) is also the button that skips
+ *     (ts2_skip_button). Not while the debugging tools' free camera has
+ *     the mouse.
+ *
  * The keys themselves are config/input_defaults.json, the title's own layout
  * (recomp_title_input in CMakeLists.txt).
  *
@@ -122,6 +128,11 @@ static struct {
     volatile unsigned unaim;    /* a weapon change asked for aimed: the present, or 0 */
     volatile WORD key_buttons;  /* RECOMP_TS2_MOUSE_SEQ's keys, as the keyboard */
     volatile unsigned key_until;
+    volatile unsigned turned;   /* the frame the free camera last took the mouse */
+    int      fire_down;         /* the left button (fire) held, as last sampled */
+    volatile WORD skip_buttons; /* a cutscene's skip, pressed for a click */
+    volatile int  skip_analog;
+    volatile unsigned skip_until;
 } M;
 
 void ts2_mouse_hold(int on)
@@ -211,6 +222,28 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *from_
      * acted on in the game's own update (m_unaim_tick). Not when the wheel
      * or keys are zooming a scope. */
     p = m_player1();
+
+    /* A cutscene: the click that fires is the skip as well. */
+    {
+        int fire = kbm->bAnalogButtons[XBOX_BUTTON_RTRIGGER] > 0;
+
+        if (fire && !M.fire_down && p && !m_camera_is_eye(p) && M.frame - M.turned > 3u) {
+            int analog;
+
+            M.skip_buttons = ts2_skip_button(&analog);
+            M.skip_analog = analog;
+            M.skip_until = M.frame + 3u;
+            if (M.log)
+                fprintf(stderr, "[TS2-MOUSE] frame %u: click in a cutscene: skip\n", M.frame);
+        }
+        M.fire_down = fire;
+        if (M.frame < M.skip_until) {
+            pad->wButtons |= M.skip_buttons;
+            if (M.skip_analog)
+                pad->bAnalogButtons[M.skip_analog == 1 ? XBOX_BUTTON_A : XBOX_BUTTON_B] = 255;
+        }
+    }
+
     if (p && !M.unaim && M_MEM32(p + TS2_PM_AIMING) &&
         (pad->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT)) &&
         !(m_scoped(p) && (kbm->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT))))
@@ -336,6 +369,7 @@ static int m_take(float *right, float *up)
 int ts2_mouse_turn(float *right, float *up)
 {
     *right = *up = 0.0f;
+    M.turned = M.frame;
     if (!A->player_base || !recomp_mouse_look())
         return 0;
     return m_take(right, up);
