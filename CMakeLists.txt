@@ -63,6 +63,8 @@ set(SPLIT2_SOURCES
     src/main.c
     src/recomp_manual.c
     src/ts2_mouse.c
+    src/ts2_menu_mouse.c
+    src/ts2_mapmaker_mouse.c
     src/ts2_devtools.c
     ${RECOMP_GEN_SOURCES}
 )

@@ -42,7 +42,9 @@
  *
  *   one key, two meanings (the toolkit's bindings filter): Escape is bound
  *     to Start, which pauses in a level, but in the front end Start
- *     accepts, so there Escape reads as B (back). And the mouse wheel,
+ *     accepts, so there Escape reads as B (back), as it does on a pause
+ *     menu screen opened from a page; Space is A while a menu is up
+ *     (m_menu_keys). And the mouse wheel,
  *     bound to the D-pad's left and right (previous and next weapon), is
  *     its up and down (zoom in and out) while zoomed in through a scope, as
  *     the game's Default controls have the D-pad. Aiming with no scope (or
@@ -50,6 +52,15 @@
  *
  *   changing weapon ends aim mode, from the wheel, the keys or the pad, so
  *     the next gun does not come up already aimed (straight into a scope).
+ *
+ *   the menus: while one is up the mouse is a pointer instead, and points
+ *     at and clicks their items (src/ts2_menu_mouse.c).
+ *
+ *   cutscenes: in a level, while the camera is not player 1's eye (a
+ *     cutscene or a level's fly-over), a click of the left button (fire,
+ *     which skips nothing) is also the button that skips
+ *     (ts2_skip_button). Not while the debugging tools' free camera has
+ *     the mouse, nor on a mounted gun, whose camera may be its own.
  *
  * The keys themselves are config/input_defaults.json, the title's own layout
  * (recomp_title_input in CMakeLists.txt).
@@ -73,10 +84,16 @@
 #include <string.h>
 
 #include "ts2_mouse.h"
+#include "ts2_menu_mouse.h"
+#include "ts2_mapmaker_mouse.h"       /* ts2_mapmaker_editing */
 #include "recomp/gen/recomp_cpu.h"   /* g_esp */
 #include "recomp/ts2_region.h"
 #include "input_bindings.h"          /* xboxrecomp: the mouse and the filter */
 #include "recomp_config.h"           /* xboxrecomp: RECOMP_TS2_MOUSE_LOG */
+
+/* xboxrecomp src/d3d/d3d8_xbox.h: a key held, with the game's window in front. */
+extern int xbox_D3D8KeyDown(int vk);
+enum { VK_BACK_ = 0x08, VK_SPACE_ = 0x20 };
 
 /* Where this release keeps what the mouse uses: each release's own table. */
 #if defined(TS2_REGION_US)
@@ -118,11 +135,21 @@ static struct {
     volatile unsigned unaim;    /* a weapon change asked for aimed: the present, or 0 */
     volatile WORD key_buttons;  /* RECOMP_TS2_MOUSE_SEQ's keys, as the keyboard */
     volatile unsigned key_until;
+    volatile unsigned turned;   /* the frame the free camera last took the mouse */
+    int      fire_down;         /* the left button (fire) held, as last sampled */
+    volatile WORD skip_buttons; /* a cutscene's skip, pressed for a click */
+    volatile int  skip_analog;
+    volatile unsigned skip_until;
 } M;
 
 void ts2_mouse_hold(int on)
 {
     M.held = on;
+}
+
+int ts2_mouse_is_held(void)
+{
+    return M.held;
 }
 
 /* A guest pointer worth following: low memory, or the contiguous window at
@@ -177,6 +204,61 @@ static int m_scoped(uint32_t p)
     return M_MEM32(p + TS2_PM_AIMING) && (M_MEM32(p + TS2_PM_FLAGS) & TS2_PF_SCOPE);
 }
 
+/* Escape and Space in the menus, as PC menus have them (the conventions
+ * write-up: Windows pairs Escape with B and Enter and Space with A).
+ * Escape is bound to Start, which pauses in a level and closes the pause
+ * menu from its pages; but in the front end Start accepts, and on a pause
+ * menu screen opened from a page it would close the whole menu, so there
+ * Escape reads as B (back one step). In MapMaker's editor it stays Start,
+ * which opens the editor's menu (B deletes there). Space, bound to
+ * nothing, is A while a menu is up. In a letter picker (a name, a map's
+ * description) the keys are a text field's: Backspace deletes (X; as B it
+ * would cancel and lose the text) and Space adds a space (Y). Each key
+ * keeps the meaning it had when it went down for as
+ * long as it is held: an Escape held from a menu into play must not
+ * become a press of Start there, nor one held from play into the pause
+ * menu a press of B. */
+static void m_menu_keys(XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
+{
+    static int esc_held, esc_back, space_held, space_a, space_y, back_held, back_x;
+    int esc = (kbm->wButtons & XBOX_GAMEPAD_START) != 0;
+    int space = xbox_D3D8KeyDown(VK_SPACE_) != 0;
+    int back = xbox_D3D8KeyDown(VK_BACK_) != 0;
+
+    if (!back) {
+        back_held = 0;
+    } else if (!back_held) {
+        back_held = 1;
+        back_x = ts2_menu_picker_up();
+    }
+    if (back && back_x && kbm->bAnalogButtons[XBOX_BUTTON_B]) {
+        pad->bAnalogButtons[XBOX_BUTTON_B] = 0;
+        pad->bAnalogButtons[XBOX_BUTTON_X] = 255;
+    }
+
+    if (!esc) {
+        esc_held = 0;
+    } else if (!esc_held) {
+        esc_held = 1;
+        esc_back = A->level_id && !ts2_mapmaker_editing() &&
+                   (!m_in_level() || ts2_menu_esc_backs());
+    }
+    if (esc && esc_back) {
+        pad->wButtons &= (WORD)~XBOX_GAMEPAD_START;
+        if ((!m_in_level() && !ts2_mapmaker_editing()) || ts2_menu_esc_backs())
+            pad->bAnalogButtons[XBOX_BUTTON_B] = 255;
+    }
+    if (!space) {
+        space_held = 0;
+    } else if (!space_held) {
+        space_held = 1;
+        space_a = recomp_pointer_wanted();
+        space_y = ts2_menu_picker_up();
+    }
+    if (space && space_a && recomp_pointer_wanted())
+        pad->bAnalogButtons[space_y ? XBOX_BUTTON_Y : XBOX_BUTTON_A] = 255;
+}
+
 static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *from_keyboard)
 {
     XBOX_GAMEPAD keys = *from_keyboard;
@@ -185,22 +267,42 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *from_
 
     if (port != 0)
         return;
+    ts2_menu_filter(pad);                   /* a click on a menu (src/ts2_menu_mouse.c) */
     if (M.key_buttons && M.frame < M.key_until) {
         keys.wButtons |= M.key_buttons;     /* RECOMP_TS2_MOUSE_SEQ */
         pad->wButtons |= M.key_buttons;
     }
-    if (!m_in_level()) {
-        /* The front end: Escape (Start, from the keyboard) backs out. */
-        if (A->level_id && (kbm->wButtons & XBOX_GAMEPAD_START)) {
-            pad->wButtons &= (WORD)~XBOX_GAMEPAD_START;
-            pad->bAnalogButtons[XBOX_BUTTON_B] = 255;
-        }
+    m_menu_keys(pad, kbm);
+    if (!m_in_level())
         return;
-    }
     /* Changing weapon aimed: noted here, where the request is seen, and
      * acted on in the game's own update (m_unaim_tick). Not when the wheel
      * or keys are zooming a scope. */
     p = m_player1();
+
+    /* A cutscene: the click that fires is the skip as well. */
+    {
+        int fire = kbm->bAnalogButtons[XBOX_BUTTON_RTRIGGER] > 0;
+        uint32_t mode = p ? M_MEM32(p + TS2_PM_MODE) : 0;
+
+        if (fire && !M.fire_down && p && !m_camera_is_eye(p) && M.frame - M.turned > 3u &&
+            mode != TS2_MODE_MOUNT_CLAMPED && mode != TS2_MODE_MOUNT) {
+            int analog;
+
+            M.skip_buttons = ts2_skip_button(&analog);
+            M.skip_analog = analog;
+            M.skip_until = M.frame + 3u;
+            if (M.log)
+                fprintf(stderr, "[TS2-MOUSE] frame %u: click in a cutscene: skip\n", M.frame);
+        }
+        M.fire_down = fire;
+        if (M.frame < M.skip_until) {
+            pad->wButtons |= M.skip_buttons;
+            if (M.skip_analog)
+                pad->bAnalogButtons[M.skip_analog == 1 ? XBOX_BUTTON_A : XBOX_BUTTON_B] = 255;
+        }
+    }
+
     if (p && !M.unaim && M_MEM32(p + TS2_PM_AIMING) &&
         (pad->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT)) &&
         !(m_scoped(p) && (kbm->wButtons & (XBOX_GAMEPAD_DPAD_LEFT | XBOX_GAMEPAD_DPAD_RIGHT))))
@@ -278,6 +380,7 @@ void ts2_mouse_frame(void)
 {
     M.frame++;
     m_seq();
+    ts2_menu_frame();                       /* the menus under the mouse */
     if (M.started)
         return;
     M.started = 1;
@@ -325,6 +428,7 @@ static int m_take(float *right, float *up)
 int ts2_mouse_turn(float *right, float *up)
 {
     *right = *up = 0.0f;
+    M.turned = M.frame;
     if (!A->player_base || !recomp_mouse_look())
         return 0;
     return m_take(right, up);

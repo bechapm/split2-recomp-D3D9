@@ -21,7 +21,7 @@
         "start":        ["pad:start", "key:ESCAPE"],
         "b":            ["pad:b", "key:BACK"],
         "back":         ["pad:back", "key:TAB"],
-        "x":            ["pad:x"],
+        "x":            ["pad:x", "key:F"],
         "black":        ["pad:lshoulder"],
         "white":        ["pad:rshoulder"]
       }
