@@ -63,10 +63,13 @@ static const Ts2MenuAddrs k_ts2_menu = {
     0x000D1A00, 0x000D1DD0,
     0x000CD10F,
     /* players: sub_00121900, the number of local players (the pause pages
-     * lay themselves out for it). inventory: sub_000D8120, the Inventory
-     * page's update (its screen's class names it at +4, as sub_000870E0 calls it):
-     * it moves [F+0x30C] through the ids at [F+0x31C] with the D-pad's up
-     * and down (F+0x18 bits 4, 8), plays the move sound, and on A or Start
-     * takes the item selected and closes the pause menu (sub_000D2520). */
-    sub_00121900, 0x000D8120,
+     * lay themselves out for it). inventory: sub_000D7840, which tells the
+     * Inventory page: it is what the screen's class holds at +4 (the table
+     * in .data is D74C0, D8120, D7840, and the class starts at D8120, as
+     * the Options page's does at D1670 with D6F60 at +4). sub_000D8120, at
+     * +0, is the page's update: it moves [F+0x30C] through the ids at
+     * [F+0x31C] with the D-pad's up and down (F+0x18 bits 4, 8), plays the
+     * move sound, and on A or Start takes the item selected and closes the
+     * pause menu (sub_000D2520). */
+    sub_00121900, 0x000D7840,
 };
