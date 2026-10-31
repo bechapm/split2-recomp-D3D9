@@ -24,8 +24,15 @@
  *
  * A menu is up when player 1's stack of screens has one on top that runs
  * and is shown, and there is a panel in it with the focus: in the front end
- * any time, in a level only while the game is paused (the pause menu).
- * The debugging tools' menu (ts2_mouse_hold) puts all of this aside.
+ * any time, in a level only while the game is paused (the pause menu). The
+ * front end keeps the pointer through the gaps between its screens, and a
+ * screen there with nothing to select takes a click as Start (Select
+ * Controller, Enter Name, whose letters are not items). In a level the mouse
+ * goes back to the camera when the menu closes. The debugging tools' menu
+ * (ts2_mouse_hold) puts all of this aside.
+ *
+ * The pause menu's lines are 3D text on a moving mesh, with no box of their
+ * own: see n_box_3d.
  *
  * In widescreen the menus are drawn in proportion, in the middle 4:3 of the
  * picture (k_ts2_ui_places has every panel and item site as CENTRE), so a
@@ -37,6 +44,9 @@
  * that present (counted as ts2_mouse_frame counts them), "FRAME:click",
  * "FRAME:rclick" and "FRAME:wheel:N" press. RECOMP_TS2_MENU_LOG=1 prints
  * each screen's panels and items as the pointer finds them, and what it did.
+ * The toolkit's RECOMP_INPUT_SEQ takes the pad over and so skips the bindings
+ * filter that a click's press goes through: with it, set
+ * RECOMP_INPUT_SEQ_PAD=1 to test clicks.
  */
 #include <math.h>
 #include <stddef.h>
@@ -208,11 +218,48 @@ static void n_clip(uint32_t p, float *l, float *t, float *r, float *b)
     *b = (float)(b1 < b2 ? b1 : b2);
 }
 
+/* An item of a 3D menu (the pause menu) has no box: it is a line of text
+ * laid on a mesh that moves, each corner of each letter going through the
+ * mesh's matrix and the viewport (sub_000ED060, sub_001ACD90, sub_001AB880).
+ * The line's place on the mesh comes from a matrix in force only while the
+ * text is laid out, which is gone by the present, so it is measured instead:
+ * mesh y = N_3D_Y0 + N_3D_Y_SCALE * the item's height fits all six lines of
+ * the pause menu's Options page to a pixel. The mesh's own matrix is read
+ * each frame, for where it has moved to. */
+#define N_3D_Y0      (-0.0289f)
+#define N_3D_Y_SCALE 0.797f
+#define N_3D_HALF_W  90.0f          /* menu pixels; the longest line is about this */
+#define N_3D_HALF_H  24.0f          /* lines are 52 apart at the closest */
+
+static int n_box_3d(uint32_t i, float *x0, float *y0, float *x1, float *y1)
+{
+    uint32_t c = N_MEM32(i + TS2_MI_CHILD), vp = A->viewport ? N_MEM32(A->viewport) : 0;
+    uint32_t m = c + TS2_MC_MATRIX;
+    float y = N_3D_Y0 + N_3D_Y_SCALE * N_MEMF(i + TS2_MI_Y_3D);
+    float z = N_MEMF(A->frontend + TS2_MF_TEXT_Z);
+    float w = y * N_MEMF(m + 0x1C) + z * N_MEMF(m + 0x2C) + N_MEMF(m + 0x3C);
+    float sx, sy;
+
+    if (!n_ptr_ok(vp) || !n_ptr_ok(c) || !(w > 0.0001f))
+        return 0;
+    sx = (float)N_MEMI(vp + TS2_VP_CENTRE_X) + (float)N_MEMI(vp + TS2_VP_HALF_W) *
+         (y * N_MEMF(m + 0x10) + z * N_MEMF(m + 0x20) + N_MEMF(m + 0x30)) / w;
+    sy = (float)N_MEMI(vp + TS2_VP_CENTRE_Y) - (float)N_MEMI(vp + TS2_VP_HALF_H) *
+         (y * N_MEMF(m + 0x14) + z * N_MEMF(m + 0x24) + N_MEMF(m + 0x34)) / w;
+    *x0 = sx - N_3D_HALF_W;
+    *x1 = sx + N_3D_HALF_W;
+    *y0 = sy - N_3D_HALF_H;
+    *y1 = sy + N_3D_HALF_H;
+    return 1;
+}
+
 /* An item's box on screen, as the panel draws it. */
 static void n_box(uint32_t p, uint32_t i, float *x0, float *y0, float *x1, float *y1)
 {
     float y = (float)(N_MEMI(p + TS2_MP_Y) + N_MEMI(i + TS2_MI_Y));
 
+    if (N_MEM32(i + TS2_MI_CHILD) && n_box_3d(i, x0, y0, x1, y1))
+        return;
     if (N_MEM32(i + TS2_MI_FLAGS) & TS2_MI_SCROLLS)
         y += (float)N_MEMI(p + TS2_MP_SCROLL) - N_MEMF(p + TS2_MP_OFFSET);
     *x0 = (float)(N_MEMI(p + TS2_MP_X) + N_MEMI(i + TS2_MI_X));
@@ -234,20 +281,22 @@ static int n_hit(uint32_t s, float x, float y, Hit *h)
         if (!n_panel_live(p))
             continue;
         n_clip(p, &cl, &ct, &cr, &cb);
-        if (x < cl || x >= cr || y < ct || y >= cb)
-            continue;
         count = N_MEMI(p + TS2_MP_ITEM_COUNT);
         for (i = N_MEM32(p + TS2_MP_ITEMS), k = 0; n_ptr_ok(i) && k < count && k < 512;
              i = N_MEM32(i + TS2_MI_NEXT), k++) {
             float x0, y0, x1, y1;
 
-            if (N_MEM32(i + TS2_MI_CHILD) || (N_MEM32(i + TS2_MI_FLAGS) & TS2_MI_DISABLED))
+            if (N_MEM32(i + TS2_MI_FLAGS) & TS2_MI_DISABLED)
                 continue;
             n_box(p, i, &x0, &y0, &x1, &y1);
             if (x < x0 || x >= x1 || y < y0 || y >= y1)
                 continue;
-            if (y0 < ct - 1.0f || y1 > cb + 1.0f)
-                continue;               /* partly scrolled away */
+            /* The panel clips what it draws itself; a 3D menu's text is
+             * drawn outside it (its panel is 0 high). */
+            if (!N_MEM32(i + TS2_MI_CHILD) &&
+                (x < cl || x >= cr || y < ct || y >= cb ||
+                 y0 < ct - 1.0f || y1 > cb + 1.0f))
+                continue;               /* partly scrolled away, or not in view */
             if (!n_row_col(p, i, &h->row, &h->col))
                 continue;
             h->panel = p;
@@ -415,7 +464,7 @@ static void n_to_menu(const RecompPointer *ptr, float *x, float *y)
 void ts2_menu_frame(void)
 {
     RecompPointer ptr;
-    uint32_t s;
+    uint32_t s, top;
     Hit hit;
     float x, y;
     int over, moved;
@@ -431,7 +480,12 @@ void ts2_menu_frame(void)
     }
 
     s = n_menu();
-    if (!s || ts2_mouse_is_held()) {
+    /* In the front end the pointer stays through the gaps between screens
+     * and on the screens with nothing to select, and in a level it stays
+     * as long as the game is paused (the pause menu's Inventory page has no
+     * lines to select); otherwise the mouse goes back to the camera. */
+    if ((!s && N_MEM32(A->level_id) < A->level_menus && !(A->pause && N_MEMI(A->pause) > 0)) ||
+        ts2_mouse_is_held()) {
         if (N.want) {
             recomp_pointer_want(0);
             N.want = 0;
@@ -449,11 +503,12 @@ void ts2_menu_frame(void)
         if (N.log)
             fprintf(stderr, "[TS2-MENU] frame %u: a menu is up, the mouse points\n", N.frame);
     }
-    if (N.log && s != N.screen)
-        n_log_screen(s);
-    if (s != N.screen)
+    top = s ? s : n_top_screen();
+    if (N.log && top && top != N.screen)
+        n_log_screen(top);
+    if (top != N.screen)
         N.hover = 0;
-    N.screen = s;
+    N.screen = top;
 
     n_seq();
     if (N.seq_on)
@@ -465,12 +520,36 @@ void ts2_menu_frame(void)
     if (N.wheel > WHEEL_QUEUE)  N.wheel = WHEEL_QUEUE;
     if (N.wheel < -WHEEL_QUEUE) N.wheel = -WHEEL_QUEUE;
 
+    if (!top) {
+        N.wheel = 0;
+        return;
+    }
     /* Nothing while the screen takes no input (it is opening or closing). */
-    if ((N_MEM32(s + TS2_MS_FLAGS) & 2u) || N_MEM8(A->frontend + TS2_MF_LOCK) < 0)
+    if ((N_MEM32(top + TS2_MS_FLAGS) & 2u) || N_MEM8(A->frontend + TS2_MF_LOCK) < 0)
         return;
 
+    /* A screen with nothing to select (Select Controller, Enter Name, a
+     * message): the left button is Start, which goes on from them, and the
+     * right button B, so the mouse alone gets through them. */
+    if (!s) {
+        if (N.frame < N.gap_until)
+            return;
+        if (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) {
+            n_press(XBOX_GAMEPAD_START, 0, 0);
+            if (N.log)
+                fprintf(stderr, "[TS2-MENU] frame %u: click, nothing to select: Start\n", N.frame);
+        } else if (ptr.pressed & (1u << RECOMP_MOUSE_RIGHT)) {
+            n_press(0, 0, 1);
+            if (N.log)
+                fprintf(stderr, "[TS2-MENU] frame %u: right button: B\n", N.frame);
+        }
+        return;
+    }
+
     over = ptr.inside && (n_to_menu(&ptr, &x, &y), n_hit(s, x, y, &hit));
-    if (over && (moved || (ptr.pressed & (1u << RECOMP_MOUSE_LEFT))) && hit.item != N.hover) {
+    /* A click always selects what it is on: the keys may have moved the
+     * selection away from the item the pointer last selected. */
+    if (over && ((moved && hit.item != N.hover) || (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)))) {
         n_select(&hit);
         N.hover = hit.item;
     }
@@ -495,6 +574,9 @@ void ts2_menu_frame(void)
             fprintf(stderr, "[TS2-MENU] frame %u: right button: B\n", N.frame);
     } else if (N.wheel) {
         n_press(N.wheel > 0 ? XBOX_GAMEPAD_DPAD_UP : XBOX_GAMEPAD_DPAD_DOWN, 0, 0);
+        if (N.log)
+            fprintf(stderr, "[TS2-MENU] frame %u: wheel: D-pad %s\n", N.frame,
+                    N.wheel > 0 ? "up" : "down");
         N.wheel += N.wheel > 0 ? -1 : 1;
     }
 }

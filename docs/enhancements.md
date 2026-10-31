@@ -114,9 +114,17 @@ selected flag, the panel's row and column, the move sound), a click presses
 A for it (or steps an option on), the right button is B and the wheel the
 D-pad's up and down (`src/ts2_menu_mouse.c`, addresses in
 `config/us/menu_mouse.inc`). The boxes are the game's own: each item's box
-from its panel's corner, as the panel draws it (`sub_000F2040`). Not yet:
-the PAL release; screens drawn without panels (if any) and MapMaker's grid
-cursor. The plan below is how it looked before.
+from its panel's corner, as the panel draws it (`sub_000F2040`). The pause
+menu's Options and Quit pages have no boxes: their lines are 3D text on a
+moving mesh, placed by the mesh's matrix and by a fit measured from the
+picture, since the matrix that lays the text out is gone by the present
+(`n_box_3d`). The pointer stays through the front end's gaps between screens
+and for as long as the game is paused; a screen with nothing to select (Select
+Controller, Enter Name, the Inventory page) takes a click as Start and the
+right button as B. Not yet: the PAL release; Enter Name's letters; changing the
+pause menu's pages by mouse; skipping the front end's cutscenes by click; and
+MapMaker's grid cursor. Tested by scripted pointer, not yet by hand. The plan
+below is how it looked before.
 
 The toolkit has no mouse input today.
 

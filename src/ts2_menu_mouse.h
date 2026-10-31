@@ -22,6 +22,7 @@ typedef struct Ts2MenuAddrs {
     uint32_t sound_on;        /* dword: non-zero when the menus make sounds */
     uint32_t sounds;          /* dword: the menus' sound set; [0] is the move */
     void   (*play_sound)(void); /* play(sound, 0), cdecl */
+    uint32_t viewport;        /* dword: points at the game's viewport (TS2_VP_*) */
 } Ts2MenuAddrs;
 
 /* The menu state F (one per local player), a screen S, a panel P and an
@@ -32,6 +33,7 @@ enum {
     TS2_MF_SCREENS    = 0x008,  /* S*[]: the stack of open screens, bottom first */
     TS2_MF_LOCK       = 0x01C,  /* byte: negative while input is held (a transition) */
     TS2_MF_COUNT      = 0x024,  /* int: screens on the stack */
+    TS2_MF_TEXT_Z     = 0x2D4,  /* float: a 3D menu's text, its depth */
 
     TS2_MS_FLAGS      = 0x008,  /* 1|4: running and shown; 2: takes no input */
     TS2_MS_PANELS     = 0x068,  /* P*: the first panel */
@@ -60,12 +62,21 @@ enum {
     TS2_MI_OPTION     = 0x010,  /* I*: the item's next look (TS2_MI_LOOK of them) */
     TS2_MI_FLAGS      = 0x028,  /* 8: cannot be selected; 0x10: selected; 0x100: scrolls */
     TS2_MI_CHOICES    = 0x040,  /* int: values to step through with left and right */
-    TS2_MI_CHILD      = 0x05C,  /* non-zero: drawn by something else, not a row */
+    TS2_MI_CHILD      = 0x05C,  /* non-zero: text in a 3D menu, not on the panel */
+    TS2_MI_Y_3D       = 0x060,  /* float: such an item's height in the 3D menu */
     TS2_MI_X          = 0x064,  /* int: the item's box, from the panel's corner */
     TS2_MI_Y          = 0x068,
     TS2_MI_W          = 0x06C,
     TS2_MI_H          = 0x070,
     TS2_MI_LOOK       = 0x074,  /* int: which of its looks is shown (TS2_MI_OPTION) */
+};
+
+/* The game's viewport, as its 3D text reads it (sub_001AB880), and the mesh
+ * a 3D menu's text lies on. */
+enum {
+    TS2_VP_CENTRE_X = 0x08, TS2_VP_HALF_W = 0x10,
+    TS2_VP_CENTRE_Y = 0x1C, TS2_VP_HALF_H = 0x24,
+    TS2_MC_MATRIX   = 0x2F0,    /* float[16]: the mesh's space to the screen */
 };
 
 enum {

@@ -112,8 +112,11 @@ launcher's Input tab (the mouse sensitivity is there too).
 In the menus (the front end, and the pause menu in a level) the mouse is a
 pointer instead: point at an option to select it, click to choose it (a
 click on a setting with values steps it to the next), right-click to go
-back, and turn the wheel to scroll a long list. The keys and the pad still
-work beside it. USA release only for now.
+back, and turn the wheel to scroll a long list. On a screen with nothing to
+point at (choosing a controller, entering a name) a click goes on, and the
+name stays the one offered, since the letters and the pause menu's pages are
+still for the keys or the pad. Those work beside the mouse. USA release only
+for now.
 
 While playing:
 

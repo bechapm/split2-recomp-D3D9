@@ -23,4 +23,7 @@ static const Ts2MenuAddrs k_ts2_menu = {
      * [0x004AD684] is set. */
     0x004AD684, 0x004AD688,
     sub_001C68C0,
+    /* viewport: [0x00483F28], read by the 3D text (sub_001ACD90) to put its
+     * projected anchor on screen. */
+    0x00483F28,
 };
