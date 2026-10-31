@@ -85,6 +85,7 @@
 
 #include "ts2_mouse.h"
 #include "ts2_menu_mouse.h"
+#include "ts2_mapmaker_mouse.h"       /* ts2_mapmaker_editing */
 #include "recomp/gen/recomp_cpu.h"   /* g_esp */
 #include "recomp/ts2_region.h"
 #include "input_bindings.h"          /* xboxrecomp: the mouse and the filter */
@@ -208,8 +209,9 @@ static int m_scoped(uint32_t p)
  * Escape is bound to Start, which pauses in a level and closes the pause
  * menu from its pages; but in the front end Start accepts, and on a pause
  * menu screen opened from a page it would close the whole menu, so there
- * Escape reads as B (back one step). Space, bound to nothing, is A while a
- * menu is up. Each key keeps the meaning it had when it went down for as
+ * Escape reads as B (back one step). In MapMaker's editor it stays Start,
+ * which opens the editor's menu (B deletes there). Space, bound to
+ * nothing, is A while a menu is up. Each key keeps the meaning it had when it went down for as
  * long as it is held: an Escape held from a menu into play must not
  * become a press of Start there, nor one held from play into the pause
  * menu a press of B. */
@@ -223,11 +225,12 @@ static void m_menu_keys(XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
         esc_held = 0;
     } else if (!esc_held) {
         esc_held = 1;
-        esc_back = A->level_id && (!m_in_level() || ts2_menu_esc_backs());
+        esc_back = A->level_id && !ts2_mapmaker_editing() &&
+                   (!m_in_level() || ts2_menu_esc_backs());
     }
     if (esc && esc_back) {
         pad->wButtons &= (WORD)~XBOX_GAMEPAD_START;
-        if (!m_in_level() || ts2_menu_esc_backs())
+        if ((!m_in_level() && !ts2_mapmaker_editing()) || ts2_menu_esc_backs())
             pad->bAnalogButtons[XBOX_BUTTON_B] = 255;
     }
     if (!space) {

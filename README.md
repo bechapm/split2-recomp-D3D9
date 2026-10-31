@@ -100,6 +100,13 @@ laid out the way PC shooters are:
 | Menus: accept, back | Enter or Space, Escape (or Backspace) | A, B |
 | Menus: point, choose, scroll | The mouse, left button, wheel (click the Back hint to go back) | |
 | Back button | Tab | Back |
+| MapMaker: move the hand | The mouse (or W A S D) | Left stick |
+| MapMaker: place (hold to lasso), delete | Left button, right button (or E, Backspace) | A, B |
+| MapMaker: turn, copy | R, F | Y, X |
+| MapMaker: zoom | Mouse wheel | Triggers |
+| MapMaker: scroll the map | Push the pointer past the hand's edge | Left stick past the edge |
+| MapMaker: tab, floor | Left and right arrows, up and down arrows (or click a tab's arrow) | D-pad |
+| MapMaker: editor menu | Escape | Start |
 
 The mouse turns you by so many degrees a count, as in a PC shooter, rather
 than pushing the stick. It is not inverted, whatever the game's own Inverse
@@ -110,15 +117,27 @@ Auto Aim off. Change any of it in the
 launcher's Input tab (the mouse sensitivity is there too).
 
 In the menus (the front end, and the pause menu in a level) the mouse is a
-pointer instead: point at an option to select it, click to choose it,
-right-click to go back, and turn the wheel to scroll a long list. On a
+pointer instead: point at an option to select it, click to choose it, and
+turn the wheel to scroll a long list (Escape or Backspace goes back, as does
+a click on the Back hint; the right button does nothing in a menu). On a
 setting with values, click the right half of the value (or its right arrow)
 for the next one and the left half (or its left arrow) for the one before.
-The button hints at the bottom ("Select", "Back") and the pause menu's page
-arrows can be clicked too. On a screen with nothing to point at (choosing a
+The button hints ("Select", "Back"), the pause menu's page arrows and its
+D-pad picture, and a long list's scroll arrows can be clicked too. While
+you use the keyboard and mouse the hints name keys ("[Enter] Select",
+"[Esc] Back") instead of the pad's buttons, and go back to the buttons when
+you pick up a pad. On a screen with nothing to point at (choosing a
 controller, entering a name) a click goes on, and the name stays the one
 offered, since the letters are still for the keys or the pad. Those work
 beside the mouse. A click also skips a cutscene. USA release only for now.
+
+In MapMaker's editor the hand follows the mouse. The left button places a
+piece (hold it and drag to lasso), the right button deletes, the wheel
+zooms, and pushing the pointer past the edge the hand stops at scrolls the
+map. The tabs' arrows and the button prompts in the corner can be clicked.
+Escape opens the editor's menu, where the mouse points and clicks as in any
+other menu. In widescreen the editor is shown in proportion in the middle
+of the screen, so the hand, the grid and the pointer line up.
 
 While playing:
 

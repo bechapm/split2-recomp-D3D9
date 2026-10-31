@@ -722,6 +722,9 @@ extern const Ts2UiPlace k_ts2_ui_places[];
 static Ts2UiPlace g_ts2_ui_extra[64];   /* RECOMP_TS2_UI_PLACE */
 static int        g_ts2_ui_extra_count;
 static int        g_ts2_ui_default = TS2_UI_AUTO;
+/* The placement for sites not in the table while a part of the game whose
+ * every piece belongs together is up, or -1 (ts2_ui_area_default). */
+static volatile int g_ts2_ui_area = -1;
 static int        g_ts2_ui_mode = -1;   /* 0 off, 1 placing, 2 placing and tagging sites */
 
 /* The batch: what is queued in it came from this site, with this placement. */
@@ -813,7 +816,22 @@ static int ts2_ui_place_for(uint32_t site)
     for (i = 0; k_ts2_ui_places[i].site; i++)
         if (k_ts2_ui_places[i].site == site)
             return k_ts2_ui_places[i].placement;
-    return g_ts2_ui_default;
+    return g_ts2_ui_area >= 0 ? g_ts2_ui_area : g_ts2_ui_default;
+}
+
+/* MapMaker's editor draws its grid, the pieces on it and the hand over it
+ * from sites the table does not name, so each went where the renderer's
+ * width guess put it: the grid, which spans the screen, stretched to 16:9,
+ * the hand and the tab bar kept in proportion in the middle. The hand then
+ * stood over the cell it edits only in the middle of the screen, a cell
+ * and a half off at the sides (measured from the user's widescreen
+ * screenshots, 31 Oct 2026). While the editor's level runs, every site
+ * the table does not name is kept in proportion, so grid, pieces, hand
+ * and pointer agree (src/ts2_menu_mouse.c, which calls this each frame
+ * with TS2_UI_CENTRE or -1). */
+void ts2_ui_area_default(int place)
+{
+    g_ts2_ui_area = place;
 }
 
 /* Tagging mode: say once which chain a new site came through. */

@@ -8,6 +8,8 @@ extern void sub_001C68C0(void);
 extern void sub_001AB030(void);
 extern void sub_001AC170(void);
 extern void sub_00121900(void);
+extern void sub_001ACA50(void);
+extern void sub_001AC170_gen(void);
 
 static const Ts2MenuAddrs k_ts2_menu = {
     /* frontend: four menu states of 0x7AC bytes from 0x004AE680, one per
@@ -16,8 +18,9 @@ static const Ts2MenuAddrs k_ts2_menu = {
      * there are run by sub_000870E0: those with flags 1 and 4 each frame. */
     0x004AE680,
     /* level_id and the first value that is not a playable level, as the
-     * debugging tools and the mouse have them. */
-    0x004A46EC, 0x64,
+     * debugging tools and the mouse have them (0x64, a MapMaker map being
+     * played, is a level). */
+    0x004A46EC, 0x65,
     /* pause: [0x0040BC58], 1 while the game is paused (the pause menu's
      * sub_001AE110 sets it), as the debugging tools have it. */
     0x0040BC58,
@@ -72,4 +75,24 @@ static const Ts2MenuAddrs k_ts2_menu = {
      * move sound, and on A or Start takes the item selected and closes the
      * pause menu (sub_000D2520). */
     sub_00121900, 0x000D7840,
+    /* panel_arrow_up, panel_arrow_down: sub_000F0010 draws a panel's scroll
+     * arrows when its list runs past it (screen flag 0x10), each through
+     * sub_001B75A0, from x = the clip's right - 20 for 16; the down one with
+     * its y corners the other way round. The Character Select list's. */
+    0x000F01CA, 0x000F022F,
+    /* pause_back: the sub_001ACA50 call in sub_000CCEC0 that draws a pause
+     * page's "Back" (text 300), its B icon drawn after it as Select's is. */
+    0x000CCFC1,
+    /* outline_flag: sub_001ACA50 draws its line four times in the outline
+     * colour, at (x-2, y), (x, y-1), (x+2, y), (x, y+1), with [0x0040BB10]
+     * set to 1, which leaves the button pictures out, then once in its
+     * colour with it 0. A selected menu line is drawn so, its outline the
+     * style's +0x50 (0, 0, 80: the deep blue round the pulsing text). */
+    0x0040BB10,
+    sub_001ACA50, sub_001AC170_gen,
+    /* tab_left, tab_right: MapMaker's tab bar (Tile, Item, Light, Story
+     * Enemies, Game Logic; names at 0x002D2F98), drawn by sub_00112DE0, its
+     * arrows through sub_001B75A0 from 0x001130AC (left) and 0x001132B0
+     * (right). */
+    0x001130AC, 0x001132B0,
 };

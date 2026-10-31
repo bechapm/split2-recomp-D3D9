@@ -243,6 +243,24 @@ extern void sub_000AA4E0_gen(void);
 void sub_000AA4E0(void) { ts2_menu_arrow(TS2_ARROW_UP); sub_000AA4E0_gen(); }
 extern void sub_000AA530_gen(void);
 void sub_000AA530(void) { ts2_menu_arrow(TS2_ARROW_DOWN); sub_000AA530_gen(); }
+/* The pause pages' prompts: a button's picture, sub_000AA360(x0, y0, x1,
+ * y1, icon, alpha) from xbbuttons.raw (icon 0 B, 1 A; "Select" at
+ * 0x000CD169, "Back" at 0x000CD01B), and the D-pad's, sub_000AB2A0(x, y,
+ * up, down, left, right), four 16-pixel pieces in a 40-pixel cross, a flag
+ * for each way that does something ("Change page" from sub_000D1C40,
+ * "Change item" from sub_000CD180). Wrapped so a click on one is that
+ * button or way, and while the keyboard and mouse drive the menu a
+ * button's picture is the key's name instead (ts2_menu_icon,
+ * ts2_menu_dpad in src/ts2_menu_mouse.c). Not placement sites. */
+extern void sub_000AA360_gen(void);
+void sub_000AA360(void) { ts2_menu_icon(sub_000AA360_gen); }
+extern void sub_000AB2A0_gen(void);
+void sub_000AB2A0(void) { ts2_menu_dpad(sub_000AB2A0_gen); }
+/* MapMaker's prompts: a button's picture by its corner, sub_000AA2F0(x, y,
+ * icon, lit), 24 by 22 (Y icon 2, B 0, X 3, A 1, in a diamond drawn by
+ * sub_00111F70). Wrapped as the pause pages' (ts2_menu_icon_at). */
+extern void sub_000AA2F0_gen(void);
+void sub_000AA2F0(void) { ts2_menu_icon_at(sub_000AA2F0_gen); }
 
 /* Where TimeSplitters 2 (USA, this XBE) draws what: the PAL table with each
  * site moved to the USA return address of the same call -- the shift of its

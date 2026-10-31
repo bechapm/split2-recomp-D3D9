@@ -37,11 +37,14 @@ static const Ts2DevAddrs k_ts2_dev = {
      * player 1 is the first (code: P = base + sub_00121930(i) * 0xD3C;
      * measured). */
     0x00497028,
-    /* level_id: 35 in Siberia (measured); 0x64 and up are the front end
+    /* level_id: 35 in Siberia (measured); above 0x64 are the front end
      * and the screens around it (0x65 measured in the front end; the
      * per-viewport draw sub_000DE610 switches on 0x65-0x69, and code
-     * compares against 0x64 and 0x6A). */
-    0x004A46EC, 0x64,
+     * compares against 0x64 and 0x6A). 0x64 itself is a MapMaker map being
+     * played or previewed, a level like any other: the game's own test for
+     * a menu level is level > 0x64 (round 6 reading, 31 Oct 2026; MapMaker's
+     * editor is 0x66). */
+    0x004A46EC, 0x65,
     /* god, infinite_ammo: the developers' switches, in BSS, written only by
      * their own toggles (sub_000553F0, sub_00055740) and a developer button
      * combination. With god set the damage filter sub_00051EC0 ignores

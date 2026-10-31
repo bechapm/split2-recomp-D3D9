@@ -134,11 +134,33 @@ cutscene: in the front end with no screen up, and in a level while the camera
 is not the player's eye and the player is not on a mounted gun
 (`src/ts2_mouse.c`), as the button `RECOMP_TS2_SKIP_BUTTON` names. A, the
 default, and Start skip the Siberia opening, its fly-over and the Introduction
-in Options; B does not. Not yet: the PAL release; Enter Name's
-letters; and MapMaker's grid cursor, which the game drives with its own
-pointer: screens keep a list of 0x18-byte hot spots (`S+0x64C`, count
-`S+0x650`) that `sub_00086FE0` tests against a cursor at `F+0x32`/`F+0x36`.
-The plan below is how it looked before.
+in Options; B does not. **PC conventions (31 Oct 2026):** a click acts when
+the button comes up over what it went down on, the right button does nothing
+in a menu, Escape and Backspace go back, Space chooses, the pointer hides
+while the keys or a pad drive the menu, and the hints name keys while the
+keyboard and mouse are in use (`[Enter]`, `[Esc]`, and the keys bound to Y
+and X, from the toolkit's `recomp_bindings_key_name`), a line that grows too
+wide stepping down to the game's narrower item font. A hint under the
+pointer is lit as the game lights its selected line: the pulsing colour
+inside the style's deep blue outline, drawn as `sub_001ACA50` draws its own
+(four passes around the line with `[0x0040BB10]` set). The pause pages'
+button pictures (`sub_000AA360`) and D-pad picture (`sub_000AB2A0`) are
+wrapped: a click on one is that button or way, and with the keys in use a
+button's picture is its key's name. A panel's own scroll arrows
+(`sub_000F0010`, the Character Select list's) are clickable, and a mirrored
+sprite (the pause pages' left arrow) is measured with its corners in order.
+**MapMaker (31 Oct 2026, `src/ts2_mapmaker_mouse.c`, addresses in
+`config/us/mapmaker.inc`):** in the editor (level 0x66) the pointer is
+written into the hand's position (`F+0x30`/`F+0x34`, 16.16) when the mouse
+moves, the left button is A while held (place, lasso), the right button B
+(delete), the wheel the triggers (zoom), and the pointer past the hand's
+limits pushes the left stick (the game's own scrolling). Its screens are the
+same hand over hot spots (`S+0x64C`, count `S+0x650`, the id under the hand
+in `S+0x648`) or rows the pointer picks by writing that id. In widescreen
+every site the placement table does not name is kept in proportion while
+the editor runs (`ts2_ui_area_default`), since the grid was stretched and
+the hand was not. Not yet: the PAL release; Enter Name's letters. The plan
+below is how it looked before.
 
 The toolkit has no mouse input today.
 

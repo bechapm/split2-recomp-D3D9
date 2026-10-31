@@ -49,6 +49,23 @@ typedef struct Ts2MenuAddrs {
     uint32_t pause_select;
     void   (*players)(void);  /* local players, in eax */
     uint32_t inventory;       /* the pause menu's Inventory page: its screen update */
+    /* A panel's own scroll arrows, drawn when its list runs past it: the
+     * sprites' return addresses, up and down. */
+    uint32_t panel_arrow_up, panel_arrow_down;
+    /* The call that draws a pause page's "Back", as pause_select its "Select". */
+    uint32_t pause_back;
+    /* dword: 1 while a line is drawn as one of its outline passes, which
+     * leave out the button pictures. */
+    uint32_t outline_flag;
+    /* text(float x, float y, text, colour, outline colour), cdecl: the form
+     * that draws its own outline. */
+    void   (*text_outlined)(void);
+    /* width(string), the game's measure as it is (text_width, above, names
+     * the keys in a line while they drive a menu). */
+    void   (*text_width_raw)(void);
+    /* MapMaker's tab bar: the sprites' return addresses of its arrows,
+     * left and right (the D-pad's left and right change tab). */
+    uint32_t tab_left, tab_right;
 } Ts2MenuAddrs;
 
 /* The menu state F (one per local player), a screen S, a panel P and an
@@ -133,6 +150,10 @@ enum {
     TS2_FONT_SCALE_Y = 0x0C,    /* float: its height, against the glyphs' */
     TS2_GLYPHS_H     = 0x10,    /* int: the glyphs' height */
     TS2_FONT_HINTS   = 0x14,    /* the button hints' font */
+    TS2_FONT_PROMPTS = 5,       /* a pause page's prompts ("Select", "Back") */
+    /* The item fonts the game steps down through to fit a line (21, 20,
+     * 19: sub_001C29F0): one glyph set, each 0.1 narrower. */
+    TS2_FONT_FIT_MIN = 19, TS2_FONT_FIT_MAX = 21,
 };
 
 /* An item style (sub_000F1230 colours an item by its style): r, g, b, a
@@ -140,6 +161,7 @@ enum {
 enum {
     TS2_STYLE_SIZE      = 0xC0,
     TS2_STYLE_LIT       = 0x40,   /* the selected line: g, b (r is the pulse) */
+    TS2_STYLE_OUTLINE   = 0x50,   /* its outline, drawn round it (r, g, b, a) */
     TS2_STYLE_ARROW_DIM = 0x80,   /* an option's arrows, on a line not selected */
     TS2_STYLE_ARROW     = 0x90,   /* on the selected line */
     TS2_STYLE_ARROW_LIT = 0xA0,   /* that way held */
@@ -170,10 +192,20 @@ void ts2_menu_frame(void);
  * wheel stands for, added to what the pad reads. */
 void ts2_menu_filter(XBOX_GAMEPAD *pad);
 
+/* For src/ts2_mapmaker_mouse.c: the menu state F (player 1's), and the
+ * level running now; 0 when not found. */
+uint32_t ts2_menu_frontend(void);
+uint32_t ts2_menu_level(void);
+
 /* Whether Esc should go back one step as B does, rather than be Start: a
  * pause menu screen opened from one of its pages is up (where Start would
  * close the whole menu). For src/ts2_mouse.c's bindings filter. */
 int ts2_menu_esc_backs(void);
+
+/* MapMaker (src/ts2_mapmaker_mouse.c): the key a prompt names for B while
+ * its editor is up, where Esc opens the editor's menu ("[Backspace]"), or
+ * NULL elsewhere. */
+const char *ts2_mapmaker_b_key(void);
 
 /* The button that skips a cutscene, as a pad press: a button bit or, for A
  * and B, *analog set to which (1 A, 2 B). RECOMP_TS2_SKIP_BUTTON picks it. */
