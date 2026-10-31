@@ -187,6 +187,7 @@ static struct {
     Target   armed;          /* what the left button went down on */
     int      esc_backs;      /* a pause menu screen opened from a page is up */
     int      no_keys;        /* measuring a line as it is, with no keys written in */
+    int      fitting;        /* inside a line fitted to its panel (n_key_fit) */
     /* A pause page's prompt text, as drawn this frame: its colours, for the
      * key written in place of its button's picture after it. */
     uint32_t prompt_col, prompt_col2;
@@ -887,7 +888,7 @@ static int n_key_fit(uint32_t e0, uint32_t str, uint32_t kt, uint32_t keep[3])
     uint32_t ret = N_MEM32(e0), f, wo, wk;
     int k;
 
-    if (!A->font_select || !A->font_now || !A->item_draw ||
+    if (N.fitting || !A->font_select || !A->font_now || !A->item_draw ||
         ret < A->item_draw || ret >= A->item_draw_end)
         return 0;
     f = N_MEM32(A->font_now);
@@ -1258,7 +1259,7 @@ static void n_text_parts(void (*draw)(void), int form, int si, int ci, uint32_t 
     g_esp = e0 + 4u;
 }
 
-void ts2_menu_text(void (*draw)(void), int form, int place)
+static void n_menu_text(void (*draw)(void), int form, int place)
 {
     uint32_t a = g_esp, str, len, k, hot0 = 0, hot1 = 0;
     int si = form == TS2_TEXT_AT_ALIGN ? 4 : 3, ci = si + 1, hot = 0;
@@ -1364,6 +1365,26 @@ void ts2_menu_text(void (*draw)(void), int form, int place)
         return;
     }
     n_text_parts(draw, form, si, ci, str, len, hot0, hot1, x);
+}
+
+/* The fit holds for the whole call: the hints' boxes are measured, and a lit
+ * hint drawn, in the font the line is drawn in. */
+void ts2_menu_text(void (*draw)(void), int form, int place)
+{
+    uint32_t a = g_esp, str, kt, keep[3];
+    int si = form == TS2_TEXT_AT_ALIGN ? 4 : 3, fit = 0, k;
+
+    if (N.want && A->frontend && A->text_width && !N.fitting) {
+        str = N_MEM32(a + 4u * (uint32_t)si);
+        if (n_ptr_ok(str) && (kt = n_key_text(str)) != 0)
+            fit = n_key_fit(a, str, kt, keep);
+    }
+    N.fitting += fit;
+    n_menu_text(draw, form, place);
+    N.fitting -= fit;
+    if (fit)
+        for (k = 0; k < 3; k++)
+            N_MEM32(A->font_now + 4u * (uint32_t)k) = keep[k];
 }
 
 /* The thing drawn last frame under the pointer that a click works: a hint,
