@@ -129,8 +129,9 @@ void ts2_menu_sprite_id(void);
 void ts2_menu_icon(void (*fn)(void));
 
 /* The D-pad's picture (x, y, up, down, left, right), 40 pixels square, each
- * flag non-zero for a way that does something now (sub_000AB2A0): each such
- * piece is noted, lit under the pointer, and a click on it is that way. */
+ * way an alpha, brighter for a way that does something now (sub_000AB2A0):
+ * each such piece is noted, lit under the pointer, and a click on it is
+ * that way. */
 void ts2_menu_dpad(void (*fn)(void));
 
 /* A button's picture placed by its corner (x, y, icon, lit), 24 by 22, as

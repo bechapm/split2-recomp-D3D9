@@ -205,6 +205,9 @@ static struct {
 
 /* ── what the menus drew ─────────────────────────────────────── */
 
+/* A Drawn's button for a thing with no slack round it. */
+#define TS2_DRAWN_EXACT 0xFF
+
 /* Each frame the drawing hooks (ts2_menu_text, ts2_menu_arrow,
  * ts2_menu_sprite) note where the hints and arrows went, in the game's
  * 640x480 pixels and with their call site's placement, and light the one
@@ -1145,7 +1148,7 @@ void ts2_menu_dpad(void (*fn)(void))
 {
     uint32_t a = g_esp;
     float x0, y0, x1, y1;
-    int k;
+    int k, dim;
 
     if (!N.want || !A->frontend) {
         fn();
@@ -1153,18 +1156,25 @@ void ts2_menu_dpad(void (*fn)(void))
     }
     N.dpad_x = n_arg_coord(a + 4);
     N.dpad_y = n_arg_coord(a + 8);
+    /* The game gives each way an alpha, never 0 while it is drawn: the way
+     * that does something is brighter than the one that does not. */
+    dim = N_MEMI(a + 12);
+    for (k = 1; k < 4; k++)
+        if (N_MEMI(a + 12u + 4u * (uint32_t)k) < dim)
+            dim = N_MEMI(a + 12u + 4u * (uint32_t)k);
     for (k = 0; k < 4; k++) {
-        N.dpad_way[k] = N_MEMI(a + 12u + 4u * (uint32_t)k) != 0;
+        N.dpad_way[k] = N_MEMI(a + 12u + 4u * (uint32_t)k) > dim;
         if (!N.dpad_way[k])
             continue;
         n_dpad_box(k, &x0, &y0, &x1, &y1);
         /* Up and down scroll (held, as a page's scroll arrow), left and
          * right change page (as a page's arrow): the D-pad's own ways. */
         if (k < 2)
-            n_drawn_add(DR_SCROLL, TS2_PLACE_AUTO, k == 0 ? TS2_ARROW_UP : TS2_ARROW_DOWN, 0,
-                        x0, y0, x1, y1);
+            n_drawn_add(DR_SCROLL, TS2_PLACE_AUTO, k == 0 ? TS2_ARROW_UP : TS2_ARROW_DOWN,
+                        TS2_DRAWN_EXACT, x0, y0, x1, y1);
         else
-            n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, k == 2 ? -1 : 1, 0, x0, y0, x1, y1);
+            n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, k == 2 ? -1 : 1, TS2_DRAWN_EXACT,
+                        x0, y0, x1, y1);
     }
     N.dpad_on = 1;
     fn();
@@ -1363,13 +1373,16 @@ static const Drawn *n_drawn_under(void)
 {
     int last = g_drawn_cur ^ 1, k, pass;
 
-    /* What the pointer is on first, then what it is near: the D-pad's pieces
-     * lie closer together than the slack. */
+    /* What the pointer is on first, then what it is near. The D-pad's pieces
+     * lie closer together than the slack, and a dim piece beside a live one
+     * must not click it, so they are only ever what the pointer is on. */
     for (pass = 0; pass < 2; pass++) {
         for (k = 0; k < g_drawn_n[last]; k++) {
             const Drawn *d = &g_drawn[last][k];
             float slack = !pass ? 0.0f : d->kind == DR_HINT ? 4.0f : 6.0f;
 
+            if (pass && d->button == TS2_DRAWN_EXACT)
+                continue;
             if (d->kind != DR_ARROW && n_under(d->place, d->x0, d->y0, d->x1, d->y1, slack))
                 return d;
         }
