@@ -101,6 +101,8 @@ laid out the way PC shooters are:
 | Menus: point, choose, scroll | The mouse, left button, wheel (click the Back hint to go back) | |
 | Back button | Tab | Back |
 | MapMaker: move the hand | The mouse (or W A S D) | Left stick |
+| Entering a name or text: pick a letter, add it | Point at it, click (or arrows, Enter) | D-pad, A |
+| Entering a name or text: space, delete, cancel | Space, Backspace, Escape | Y, X, B |
 | MapMaker: place (hold to lasso), delete | Left button, right button (or E, Backspace) | A, B |
 | MapMaker: turn, copy | R, F | Y, X |
 | MapMaker: zoom | Mouse wheel | Triggers |
@@ -127,16 +129,18 @@ D-pad picture, and a long list's scroll arrows can be clicked too. While
 you use the keyboard and mouse the hints name keys ("[Enter] Select",
 "[Esc] Back") instead of the pad's buttons, and go back to the buttons when
 you pick up a pad. On a screen with nothing to point at (choosing a
-controller, entering a name) a click goes on, and the name stays the one
-offered, since the letters are still for the keys or the pad. Those work
-beside the mouse. A click also skips a cutscene. USA release only for now.
+controller) a click goes on. Where you enter a name or a text (a new
+profile, a MapMaker map's name, description and briefing), point at a
+letter and click it to add it; Space adds a space and Backspace deletes, as
+in a text box. A click also skips a cutscene. USA release only for now.
 
 In MapMaker's editor the hand follows the mouse. The left button places a
 piece (hold it and drag to lasso), the right button deletes, the wheel
 zooms, and pushing the pointer past the edge the hand stops at scrolls the
 map. The tabs' arrows and the button prompts in the corner can be clicked.
 Escape opens the editor's menu, where the mouse points and clicks as in any
-other menu. In widescreen the editor is shown in proportion in the middle
+other menu, including the arrows beside Map Settings' and Editor Settings'
+values. In widescreen the editor is shown in proportion in the middle
 of the screen, so the hand, the grid and the pointer line up.
 
 While playing:

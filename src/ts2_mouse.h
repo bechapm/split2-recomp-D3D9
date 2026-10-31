@@ -138,6 +138,10 @@ void ts2_menu_dpad(void (*fn)(void));
  * MapMaker's prompts draw theirs (sub_000AA2F0): as ts2_menu_icon. */
 void ts2_menu_icon_at(void (*fn)(void));
 
+/* The letter picker's draw (sub_001AD350): notes that a picker is up, and
+ * whose, for the pointer to pick its cells. */
+void ts2_menu_picker(void (*fn)(void));
+
 /* src/recomp_manual.c: the widescreen placement (TS2_UI_*) for every site
  * its table does not name, while MapMaker's editor is up; -1 for the
  * usual. */

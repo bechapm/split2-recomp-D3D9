@@ -54,6 +54,10 @@ enum {
 int  ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y, int inside,
                         int moved, int menu_took_press);
 
+/* A frame MapMaker does not take, for a screen the menu pointer runs
+ * itself (the letter picker): its presses run out, nothing is held. */
+void ts2_mapmaker_idle(void);
+
 /* MapMaker's editor (no screen up) is running: Escape is Start there,
  * which opens its menu. */
 int  ts2_mapmaker_editing(void);

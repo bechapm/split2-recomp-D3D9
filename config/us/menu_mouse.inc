@@ -101,4 +101,19 @@ static const Ts2MenuAddrs k_ts2_menu = {
     /* prompt_label_left, prompt_label_right: sub_00111F70's text for X,
      * after its picture, and for B, after its. */
     0x001120BF, 0x0011205B,
+    /* row_arrow_left, row_arrow_right: MapMaker's screens of rows (Map
+     * Settings, class 0x002D34C4; Editor Settings, 0x002D3394) draw a row's
+     * arrows in sub_00119B10 through sub_000AA5B0, sprites 0x14 and 0x15
+     * from 0x00119D49 and 0x00119DC7, at the row's hot spot's y + 2, only
+     * on a row whose value steps. sub_0011A140 steps the value of the row
+     * picked (S+0x648, the hot spot's id, which is the row's) with the
+     * D-pad's left and right. */
+    0x00119D49, 0x00119DC7,
+    /* picker_states: the letter picker's, 0x0040BB38 + player * 0x40
+     * (sub_001ADE00 opens one, sub_001AD350 draws it, sub_001ACE70 runs
+     * it). picker_hint: sub_001AD350's sub_001ACA50 call for "\x0b2 Add
+     * \x0b1 Cancel" under the grid, MapMaker's pickers only (mode 5), at
+     * x + 6 in font 0x14: 160 pixels of room, 222 with the keys named. */
+    0x0040BB38,
+    0x001ADD2C,
 };

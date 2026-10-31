@@ -159,8 +159,20 @@ same hand over hot spots (`S+0x64C`, count `S+0x650`, the id under the hand
 in `S+0x648`) or rows the pointer picks by writing that id. In widescreen
 every site the placement table does not name is kept in proportion while
 the editor runs (`ts2_ui_area_default`), since the grid was stretched and
-the hand was not. Not yet: the PAL release; Enter Name's letters. The plan
-below is how it looked before.
+the hand was not. Map Settings' and Editor Settings' value arrows (sprites
+from `0x00119D49`, `0x00119DC7`) pick their row and are the D-pad's left
+and right. The Mode question's hot spots are its title, the moving
+selection bar, then its lines; only the lines are counted. **The letter
+picker** (Enter Name, MapMaker's names, description and briefing; one module,
+`sub_001AD350` draws it and so says it is up, state `0x0040BB38 + player *
+0x40`) takes the pointer from the menu round it: the cell under it is
+written as the picked one (6 by 6 cells, 24 by 20 from the box's corner +
+(6, 4)) and a click is A. In a picker Backspace is X (delete) and Space Y
+(a space), as in a text box, and MapMaker's "Add  Cancel" line under its
+grid (`0x001ADD2C`) steps down to font 0x11 to fit its box with the keys
+named. Typing letters on the keyboard is not done: the game's window gets no
+text input yet (a toolkit change). Not yet: the PAL release. The plan below
+is how it looked before.
 
 The toolkit has no mouse input today.
 

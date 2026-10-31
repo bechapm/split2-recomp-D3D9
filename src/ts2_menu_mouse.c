@@ -144,13 +144,14 @@ typedef struct Hit {
 
 /* What a click is on, noted when the left button goes down and compared
  * when it comes up (n_target, n_same). */
-enum { T_NONE, T_PAGE, T_SCROLL, T_HINT, T_INVENTORY, T_EMPTY, T_ITEM };
+enum { T_NONE, T_PAGE, T_SCROLL, T_HINT, T_INVENTORY, T_EMPTY, T_ITEM, T_PICKER };
 
 typedef struct Target {
     int      kind;
     int      dir;            /* T_PAGE: -1, 1; T_SCROLL: TS2_ARROW_*; T_ITEM: the option side */
     int      button;         /* T_HINT: 1 B, 2 A */
-    int      row;            /* T_INVENTORY */
+    int      row;            /* T_INVENTORY; T_PICKER: the cell, row * 6 + column;
+                              * T_PAGE of a row's arrow: its height */
     uint32_t item;           /* T_ITEM */
 } Target;
 
@@ -202,7 +203,13 @@ static struct {
     int      dpad_on;
     float    dpad_x, dpad_y;
     int      dpad_way[4];
+    /* The letter picker drawn last (ts2_menu_picker): its state, and the
+     * frame; 0 none. */
+    uint32_t picker;
+    unsigned picker_frame;
 } N;
+
+static int n_picker_up(void);
 
 /* ── what the menus drew ─────────────────────────────────────── */
 
@@ -697,16 +704,6 @@ void ts2_menu_arrow(int dir)
     } else if (ret >= A->scroll_draw && ret < A->scroll_draw_end) {
         kind = DR_SCROLL;
         place = TS2_PLACE_AUTO;
-    } else if (ts2_mapmaker_active() && (dir == TS2_ARROW_LEFT || dir == TS2_ARROW_RIGHT)) {
-        /* MapMaker's screens of rows (Map Settings, Editor Settings): an
-         * arrow beside a row's value. A click picks its row and is the
-         * D-pad's left or right, which steps the value (Drawn button 1: a
-         * row's arrow, not a page's). */
-        n_corners(a + 4, &x0, &y0, &x1, &y1);
-        n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, dir == TS2_ARROW_LEFT ? -1 : 1, 1, x0, y0, x1, y1);
-        if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 4.0f))
-            N_MEM32(a + 20) = n_lit(N_MEM32(a + 20));
-        return;
     } else {
         return;
     }
@@ -776,6 +773,20 @@ void ts2_menu_sprite_id(void)
     if (!N.want || !A->tab_left)
         return;
     ret = N_MEM32(a);
+    if (ret && (ret == A->row_arrow_left || ret == A->row_arrow_right)) {
+        /* MapMaker's row arrows (Map Settings, Editor Settings): the art is
+         * the left 16 pixels of a 32 wide sprite. A click picks the row and
+         * is the D-pad's left or right, which steps its value (Drawn button
+         * 1: a row's arrow, not a page's). */
+        x0 = N_MEMF(a + 4);
+        y0 = N_MEMF(a + 8);
+        x1 = x0 + 18.0f;
+        y1 = y0 + 16.0f;
+        n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, ret == A->row_arrow_left ? -1 : 1, 1, x0, y0, x1, y1);
+        if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 3.0f))
+            N_MEM32(a + 16) = n_lit(N_MEM32(a + 16));
+        return;
+    }
     if (ret != A->tab_left && ret != A->tab_right)
         return;
     rec = N_MEM32(N_MEM32(A->texture_records)) +
@@ -823,7 +834,10 @@ static const char *n_key_name(int d)
             snprintf(x, sizeof x, "[%s]", k);
     }
     switch (d) {
-    case 1: return ts2_mapmaker_b_key() ? ts2_mapmaker_b_key() : "[Esc]";
+    case 1:
+        /* In a letter picker Backspace deletes (src/ts2_mouse.c), so B,
+         * cancel, is Esc there in MapMaker too. */
+        return ts2_mapmaker_b_key() && !n_picker_up() ? ts2_mapmaker_b_key() : "[Esc]";
     case 2: return "[Enter]";
     case 3: return y[0] ? y : NULL;
     case 4: return x[0] ? x : NULL;
@@ -891,18 +905,29 @@ static uint32_t n_raw_width(uint32_t str)
  * cuts it off (Select Controller's "Select  Back"). The game fits a line by
  * stepping down through its item fonts, 21 to 19, each a tenth narrower
  * (sub_001C29F0); so is this one, while it is wider than the game's by
- * more than a few pixels. Returns whether the font was changed; *keep holds
+ * more than a few pixels. So is the letter picker's "Add  Cancel" line in
+ * MapMaker, through the fonts below its own. Returns whether the font was changed; *keep holds
  * what to put back. */
 static int n_key_fit(uint32_t e0, uint32_t str, uint32_t kt, uint32_t keep[3])
 {
-    uint32_t ret = N_MEM32(e0), f, wo, wk;
+    uint32_t ret = N_MEM32(e0), f, wo, wk, lo, hi;
     int k;
 
-    if (N.fitting || !A->font_select || !A->font_now || !A->item_draw ||
-        ret < A->item_draw || ret >= A->item_draw_end)
+    if (N.fitting || !A->font_select || !A->font_now)
         return 0;
+    if (A->item_draw && ret >= A->item_draw && ret < A->item_draw_end) {
+        lo = TS2_FONT_FIT_MIN;
+        hi = TS2_FONT_FIT_MAX;
+    } else if (A->picker_hint && ret == A->picker_hint) {
+        /* The letter picker's "Add  Cancel" in MapMaker, in a box 160
+         * wide: 222 with the keys named in 0x14, 153 in 0x11. */
+        lo = TS2_FONT_PICKER_MIN;
+        hi = TS2_FONT_PICKER_MAX;
+    } else {
+        return 0;
+    }
     f = N_MEM32(A->font_now);
-    if (f <= TS2_FONT_FIT_MIN || f > TS2_FONT_FIT_MAX)
+    if (f <= lo || f > hi)
         return 0;
     wo = n_raw_width(str);
     wk = n_raw_width(kt);
@@ -910,7 +935,7 @@ static int n_key_fit(uint32_t e0, uint32_t str, uint32_t kt, uint32_t keep[3])
         return 0;
     for (k = 0; k < 3; k++)
         keep[k] = N_MEM32(A->font_now + 4u * (uint32_t)k);
-    while (f > TS2_FONT_FIT_MIN && wk > wo + 6u) {
+    while (f > lo && wk > wo + 6u) {
         f--;
         n_guest_call(A->font_select, &f, 1);
         wk = n_raw_width(kt);
@@ -1153,6 +1178,18 @@ void ts2_menu_icon_at(void (*fn)(void))
     icon = N_MEMI(a + 12);
     n_icon(fn, x, y, x + 24.0f, y + 22.0f, icon, icon == 3 ? 0 : icon == 0 ? 2 : 1,
            N_MEMI(a + 16) != 0, 16, 0x6464647Fu, 0x0000007Fu);
+}
+
+void ts2_menu_picker(void (*fn)(void))
+{
+    uint32_t player = N_MEM32(g_esp + 4);
+
+    /* Player 1's only: the mouse is controller 1's. */
+    if (N.want && A->picker_states && player == 0) {
+        N.picker = A->picker_states;
+        N.picker_frame = N.frame;
+    }
+    fn();
 }
 
 void ts2_menu_dpad(void (*fn)(void))
@@ -1694,6 +1731,74 @@ static void n_press_skip(const char *where)
         fprintf(stderr, "[TS2-MENU] frame %u: click, %s: skip\n", N.frame, where);
 }
 
+/* ── the letter picker ───────────────────────────────────────── */
+
+/* A letter picker was drawn this frame or the last (ts2_menu_picker). */
+static int n_picker_up(void)
+{
+    return N.picker && N.frame <= N.picker_frame + 1u;
+}
+
+/* A picker's corner value: an int, as sub_001ADE00 is given it. */
+static float n_picker_coord(uint32_t a)
+{
+    int32_t v = N_MEMI(a);
+
+    return v > -1000 && v < 2000 ? (float)v : N_MEMF(a);
+}
+
+/* The cell of the picker under the pointer, row * 6 + column, at the first
+ * column of a wide cell (SPACE, DEL, END); -1 for none. Its sites have no
+ * placement of their own, so the pointer is tried where a site with none
+ * is put (n_under): the middle 4:3, then the whole picture. */
+static int n_picker_cell(void)
+{
+    uint32_t k = N.picker, layout;
+    float gx, gy, rh, px;
+    int pass, c, r;
+
+    if (!n_picker_up() || !N.pin)
+        return -1;
+    gx = n_picker_coord(k + TS2_KB_X) + 6.0f;
+    gy = n_picker_coord(k + TS2_KB_Y) + 4.0f;
+    rh = N_MEMI(k + TS2_KB_MODE) == 2 ? 15.0f : 20.0f;
+    if (N.py < gy || N.py >= gy + 6.0f * rh)
+        return -1;
+    r = (int)((N.py - gy) / rh);
+    for (pass = 0; pass < 2; pass++) {
+        px = pass ? N.pxs : N.px;
+        if (px < gx || px >= gx + 6.0f * 24.0f)
+            continue;
+        c = (int)((px - gx) / 24.0f);
+        if (c < 0 || c > 5 || r < 0 || r > 5)
+            continue;
+        layout = N_MEM32(k + TS2_KB_LAYOUT);
+        if (n_ptr_ok(layout))
+            while (c > 0 && N_MEM8(layout + (uint32_t)(r * 6 + c - 1)) ==
+                            N_MEM8(layout + (uint32_t)(r * 6 + c)))
+                c--;
+        return r * 6 + c;
+    }
+    return -1;
+}
+
+/* Picks a cell, as the D-pad would: the game boxes it, and A or Start
+ * acts on it. */
+static void n_picker_pick(int cell)
+{
+    uint32_t k = N.picker;
+
+    if (cell < 0 || !n_picker_up())
+        return;
+    if (N_MEMI(k + TS2_KB_COLUMN) == cell % 6 && N_MEMI(k + TS2_KB_ROW) == cell / 6)
+        return;
+    N_MEMI(k + TS2_KB_COLUMN) = cell % 6;
+    N_MEMI(k + TS2_KB_ROW) = cell / 6;
+    if (N.log)
+        fprintf(stderr, "[TS2-MENU] frame %u: the pointer picks letter cell %d,%d\n", N.frame,
+                cell % 6, cell / 6);
+}
+
 /* What the pointer is on at (x, y), in the order a click takes it: a hint,
  * a page's arrow or a scroll arrow drawn last frame, an Inventory row, a
  * line of the menu (with the side of an option's value it is on), or, on a
@@ -1706,7 +1811,10 @@ static void n_target(uint32_t s, uint32_t top, float x, float y, int in_level,
     float right;
 
     memset(t, 0, sizeof *t);
-    *over = s && n_hit(s, x, y, hit);
+    /* A letter picker takes the pointer from the menu round it: its
+     * cells, and the hints drawn; never a line, nor Start for a click on
+     * nothing (which would add the cell picked wherever it fell). */
+    *over = s && !n_picker_up() && n_hit(s, x, y, hit);
     if (d && d->kind == DR_PAGE) {
         t->kind = T_PAGE;
         t->dir = d->dir;
@@ -1716,6 +1824,9 @@ static void n_target(uint32_t s, uint32_t top, float x, float y, int in_level,
     } else if (d && d->kind == DR_HINT) {
         t->kind = T_HINT;
         t->button = d->button;
+    } else if (n_picker_up()) {
+        if ((t->row = n_picker_cell()) >= 0)
+            t->kind = T_PICKER;
     } else if ((t->row = n_inventory_row(top, x, y)) >= 0) {
         t->kind = T_INVENTORY;
     } else if (*over) {
@@ -1755,6 +1866,14 @@ static void n_act(const Target *t, const Hit *hit)
             fprintf(stderr, "[TS2-MENU] frame %u: click on the hint: %s\n", N.frame,
                     t->button == 2 ? "A" : t->button == 1 ? "B" : t->button == 3 ? "Y" : "X");
         break;
+    case T_PICKER:
+        /* A: the cell picked (the press picked it) is added, or does what
+         * it says (abc, DEL, END). */
+        n_press(0, 1, 0);
+        if (N.log)
+            fprintf(stderr, "[TS2-MENU] frame %u: click on letter cell %d,%d: A\n", N.frame,
+                    t->row % 6, t->row / 6);
+        break;
     case T_INVENTORY:
         /* A: the game's own Select, which also closes the pause menu. */
         n_press(0, 1, 0);
@@ -1790,6 +1909,11 @@ static void n_act(const Target *t, const Hit *hit)
 int ts2_menu_esc_backs(void)
 {
     return N.want && N.esc_backs;
+}
+
+int ts2_menu_picker_up(void)
+{
+    return N.want && n_picker_up();
 }
 
 void ts2_menu_frame(void)
@@ -1911,6 +2035,10 @@ void ts2_menu_frame(void)
         } else if (d && d->kind == DR_HINT) {
             cur.kind = T_HINT;
             cur.button = d->button;
+        } else if (ptr.inside && (cur.row = n_picker_cell()) >= 0) {
+            cur.kind = T_PICKER;
+            if (moved || (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)))
+                n_picker_pick(cur.row);
         }
         down = (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) != 0;
         up = (N.left_held || down) && !(ptr.held & (1u << RECOMP_MOUSE_LEFT));
@@ -1930,6 +2058,13 @@ void ts2_menu_frame(void)
                 n_act(&cur, &hit);
         }
         N.wheel = 0;                    /* the editor's own (zoom), read from ptr */
+        /* A letter picker (a map's name, description or briefing) is the
+         * menu pointer's alone: MapMaker's hand would take a click on it
+         * as A wherever it fell. */
+        if (n_picker_up()) {
+            ts2_mapmaker_idle();
+            return;
+        }
         ts2_mapmaker_frame(top, &ptr, x, y, ptr.inside, moved, took);
         return;
     }
@@ -1988,6 +2123,8 @@ void ts2_menu_frame(void)
      * row it moves onto or presses on. */
     if (cur.kind == T_INVENTORY && (moved || down))
         n_inventory_select(cur.row);
+    if (cur.kind == T_PICKER && (moved || down))
+        n_picker_pick(cur.row);
     /* A press always selects what it is on: the keys may have moved the
      * selection away from the item the pointer last selected. */
     if (over && ((moved && hit.item != N.hover) || down)) {

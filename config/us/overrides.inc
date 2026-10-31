@@ -261,6 +261,12 @@ void sub_000AB2A0(void) { ts2_menu_dpad(sub_000AB2A0_gen); }
  * sub_00111F70). Wrapped as the pause pages' (ts2_menu_icon_at). */
 extern void sub_000AA2F0_gen(void);
 void sub_000AA2F0(void) { ts2_menu_icon_at(sub_000AA2F0_gen); }
+/* The letter picker's draw, sub_001AD350(player, ...): called only while a
+ * picker is shown (Enter Name, MapMaker's names, description and briefing),
+ * so it says one is up and whose, for the pointer to pick its cells
+ * (ts2_menu_picker). Not a placement site. */
+extern void sub_001AD350_gen(void);
+void sub_001AD350(void) { ts2_menu_picker(sub_001AD350_gen); }
 
 /* Where TimeSplitters 2 (USA, this XBE) draws what: the PAL table with each
  * site moved to the USA return address of the same call -- the shift of its

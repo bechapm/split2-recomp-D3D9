@@ -72,6 +72,17 @@ typedef struct Ts2MenuAddrs {
     /* The prompt text calls drawn just after the picture at the left and
      * right of MapMaker's diamond: their return addresses. */
     uint32_t prompt_label_left, prompt_label_right;
+    /* MapMaker's screens of rows (Map Settings, Editor Settings): the
+     * sprites' return addresses of a row's arrows, left and right, drawn
+     * beside its value (the D-pad's left and right on the row picked step
+     * it). */
+    uint32_t row_arrow_left, row_arrow_right;
+    /* The letter picker (Enter Name, MapMaker's names and texts): the
+     * states, TS2_KB_SIZE a player (TS2_KB_*), and the return address of
+     * the "Add  Cancel" line MapMaker's draw under its grid, which is
+     * fitted to its box while it names keys. */
+    uint32_t picker_states;
+    uint32_t picker_hint;
 } Ts2MenuAddrs;
 
 /* The menu state F (one per local player), a screen S, a panel P and an
@@ -160,6 +171,24 @@ enum {
     /* The item fonts the game steps down through to fit a line (21, 20,
      * 19: sub_001C29F0): one glyph set, each 0.1 narrower. */
     TS2_FONT_FIT_MIN = 19, TS2_FONT_FIT_MAX = 21,
+    /* The fonts the letter picker's "Add  Cancel" line steps down through:
+     * it is drawn in 0x14 (0x13, 0x10 in two languages), each smaller one
+     * narrower. */
+    TS2_FONT_PICKER_MIN = 0x10, TS2_FONT_PICKER_MAX = 0x14,
+};
+
+/* A player's letter picker (sub_001AD350 draws it, sub_001ACE70 runs it):
+ * a grid of 6 by 6 cells, each 24 wide and 20 high (15 with three or more
+ * players), from (x + 6, y + 4). SPACE, DEL and END are two cells wide,
+ * any of their columns picking them. A or Start acts on the cell picked. */
+enum {
+    TS2_KB_X      = 0x00,       /* int: the box, from the viewport's corner */
+    TS2_KB_Y      = 0x04,
+    TS2_KB_LAYOUT = 0x1C,       /* char*: the cells' characters, row * 6 + column */
+    TS2_KB_COLUMN = 0x28,       /* int: the cell picked */
+    TS2_KB_ROW    = 0x2C,
+    TS2_KB_MODE   = 0x30,       /* int: 1 the front end, 2 with three or more players, 5 MapMaker */
+    TS2_KB_SIZE   = 0x40,
 };
 
 /* An item style (sub_000F1230 colours an item by its style): r, g, b, a
@@ -207,6 +236,10 @@ uint32_t ts2_menu_level(void);
  * pause menu screen opened from one of its pages is up (where Start would
  * close the whole menu). For src/ts2_mouse.c's bindings filter. */
 int ts2_menu_esc_backs(void);
+
+/* Whether player 1's letter picker is up (Enter Name, MapMaker's names and
+ * texts): its keys are a text field's there (src/ts2_mouse.c). */
+int ts2_menu_picker_up(void);
 
 /* MapMaker (src/ts2_mapmaker_mouse.c): the key a prompt names for B while
  * MapMaker is up, where Esc opens the editor's menu ("[Backspace]"), or

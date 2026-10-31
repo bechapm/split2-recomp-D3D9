@@ -93,7 +93,7 @@
 
 /* xboxrecomp src/d3d/d3d8_xbox.h: a key held, with the game's window in front. */
 extern int xbox_D3D8KeyDown(int vk);
-enum { VK_SPACE_ = 0x20 };
+enum { VK_BACK_ = 0x08, VK_SPACE_ = 0x20 };
 
 /* Where this release keeps what the mouse uses: each release's own table. */
 #if defined(TS2_REGION_US)
@@ -211,15 +211,30 @@ static int m_scoped(uint32_t p)
  * menu screen opened from a page it would close the whole menu, so there
  * Escape reads as B (back one step). In MapMaker's editor it stays Start,
  * which opens the editor's menu (B deletes there). Space, bound to
- * nothing, is A while a menu is up. Each key keeps the meaning it had when it went down for as
+ * nothing, is A while a menu is up. In a letter picker (a name, a map's
+ * description) the keys are a text field's: Backspace deletes (X; as B it
+ * would cancel and lose the text) and Space adds a space (Y). Each key
+ * keeps the meaning it had when it went down for as
  * long as it is held: an Escape held from a menu into play must not
  * become a press of Start there, nor one held from play into the pause
  * menu a press of B. */
 static void m_menu_keys(XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
 {
-    static int esc_held, esc_back, space_held, space_a;
+    static int esc_held, esc_back, space_held, space_a, space_y, back_held, back_x;
     int esc = (kbm->wButtons & XBOX_GAMEPAD_START) != 0;
     int space = xbox_D3D8KeyDown(VK_SPACE_) != 0;
+    int back = xbox_D3D8KeyDown(VK_BACK_) != 0;
+
+    if (!back) {
+        back_held = 0;
+    } else if (!back_held) {
+        back_held = 1;
+        back_x = ts2_menu_picker_up();
+    }
+    if (back && back_x && kbm->bAnalogButtons[XBOX_BUTTON_B]) {
+        pad->bAnalogButtons[XBOX_BUTTON_B] = 0;
+        pad->bAnalogButtons[XBOX_BUTTON_X] = 255;
+    }
 
     if (!esc) {
         esc_held = 0;
@@ -238,9 +253,10 @@ static void m_menu_keys(XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *kbm)
     } else if (!space_held) {
         space_held = 1;
         space_a = recomp_pointer_wanted();
+        space_y = ts2_menu_picker_up();
     }
     if (space && space_a && recomp_pointer_wanted())
-        pad->bAnalogButtons[XBOX_BUTTON_A] = 255;
+        pad->bAnalogButtons[space_y ? XBOX_BUTTON_Y : XBOX_BUTTON_A] = 255;
 }
 
 static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *from_keyboard)

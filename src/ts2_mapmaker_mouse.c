@@ -244,13 +244,14 @@ int ts2_mapmaker_pick_row_at(uint32_t top, float y)
     return 0;
 }
 
-/* The line of the Mode question under (x, y), from 0, or -1. After its
- * title each hot spot is a line, or a piece of one at the same height: a
- * line is its rank among the heights, top first, and it runs across the
- * widest of them, from one line's top to the next's. Ranked, not counted
- * in the order the spots come, and by bands with no gaps, so the line
- * under a resting pointer is the same however the game lists or redraws
- * them (the user saw it bounce between Beginner and Advanced). */
+/* The line of the Mode question under (x, y), from 0, or -1. Its hot spots
+ * (sub_000FFA50) are its title, then the selection bar, which sits on the
+ * line picked and so moves, then a spot for each line. Counting the bar
+ * as a line made the pointer pick the other line each time the bar moved
+ * (the user saw it bounce between Beginner and Advanced, and a click on
+ * Advanced was lost), so the lines are the spots after it: a line is its
+ * rank among their heights, top first, across the widest of them, from
+ * one line's top to the next's. */
 #define MODE_LINES 8
 
 static int mm_mode_at(uint32_t s, float x, float y)
@@ -259,9 +260,9 @@ static int mm_mode_at(uint32_t s, float x, float y)
     uint32_t hots = M_MEM32(s + TS2_MS_HOTS);
     float top[MODE_LINES], bottom[MODE_LINES], left = 1.0e9f, right = -1.0e9f;
 
-    if (n <= 1 || n > 16 || !mm_ptr_ok(hots))
+    if (n <= 2 || n > 16 || !mm_ptr_ok(hots))
         return -1;
-    for (k = 1; k < n; k++) {
+    for (k = 2; k < n; k++) {
         uint32_t h = hots + (uint32_t)k * TS2_HOT_SIZE;
         float hx = (float)M_MEM16(h + TS2_HOT_X), hy = (float)M_MEM16(h + TS2_HOT_Y);
         float hb = hy + (float)M_MEM16(h + TS2_HOT_H), hr = hx + (float)M_MEM16(h + TS2_HOT_W);
@@ -292,6 +293,16 @@ static int mm_mode_at(uint32_t s, float x, float y)
     for (j = lines - 1; j > 0 && y < top[j]; j--)
         ;
     return j;
+}
+
+void ts2_mapmaker_idle(void)
+{
+    MM.frame++;
+    MM.stick_x = MM.stick_y = 0;
+    MM.a_held = 0;
+    MM.armed = 0;
+    MM.wheel = 0;
+    MM.left_was = 0;
 }
 
 int ts2_mapmaker_frame(uint32_t top, const RecompPointer *ptr, float x, float y, int inside,
