@@ -117,4 +117,9 @@ void ts2_menu_arrow(int dir);
  * the pause menu's page arrows are drawn as these. */
 void ts2_menu_sprite(void);
 
+/* A lifted text function whose string is argument si (the game's measure
+ * of text, sub_001AC170 in the USA release): called with the pad's A and B
+ * written as Enter and Esc while the keyboard and mouse drive a menu. */
+void ts2_key_text(void (*fn)(void), int si);
+
 #endif

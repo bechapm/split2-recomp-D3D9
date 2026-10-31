@@ -669,6 +669,89 @@ void ts2_menu_sprite(void)
 }
 
 /* How wide the first n bytes of a string draw in the font selected now. */
+/* ── keys in the hints, while the keyboard and mouse are in use ─────── */
+
+/* The game writes a pad button in its text as \x0b and a digit, drawn as
+ * the button's picture: 2 is A, 1 is B. On a PC the prompt names the key
+ * the player is using instead (the conventions write-up: Steam's and
+ * Apple's guidelines, and every PC port review, ask for prompts that match
+ * the device in use). While a menu is up and the keyboard and mouse have
+ * it (recomp_input_using_keys), each text call and the game's own measure
+ * of text (sub_001AC170, so its hint bar lays the line out at the new
+ * width) get a copy of the line with those two written as the keys that
+ * do the same in a menu: Enter for A, Esc for B. The other digits, and
+ * text in a level outside the pause menu, keep the pad's pictures. */
+#define KEY_TEXT_LEN  256
+#define KEY_TEXT_RING 4
+static const char *const k_key_names[3] = { NULL, "[Esc]", "[Enter]" };
+
+extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
+
+static uint32_t n_key_buffer(void)
+{
+    static uint32_t ring;
+    static int next;
+
+    if (!ring)
+        ring = xbox_HeapAlloc(KEY_TEXT_LEN * KEY_TEXT_RING, 16);
+    if (!ring)
+        return 0;
+    next = (next + 1) % KEY_TEXT_RING;      /* a call inside a call gets its own */
+    return ring + (uint32_t)next * KEY_TEXT_LEN;
+}
+
+/* str with A and B written as keys, in guest memory; 0 when it has neither
+ * or nothing is to be changed. */
+static uint32_t n_key_text(uint32_t str)
+{
+    uint32_t k, o = 0, buf;
+    int any = 0;
+
+    if (!N.want || !recomp_input_using_keys() || !n_ptr_ok(str))
+        return 0;
+    for (k = 0; k < 0x7F && N_MEM8(str + k); k++)
+        if (N_MEM8(str + k) == 0x0B && (N_MEM8(str + k + 1u) == '1' || N_MEM8(str + k + 1u) == '2'))
+            any = 1;
+    if (!any || !(buf = n_key_buffer()))
+        return 0;
+    for (k = 0; k < 0x7F && N_MEM8(str + k) && o + 9u < KEY_TEXT_LEN; k++) {
+        int8_t c = N_MEM8(str + k), d = N_MEM8(str + k + 1u);
+
+        if (c == 0x0B && (d == '1' || d == '2')) {
+            const char *n = k_key_names[d - '0'];
+
+            while (*n)
+                N_MEM8(buf + o++) = *n++;
+            k++;
+            continue;
+        }
+        N_MEM8(buf + o++) = c;
+    }
+    N_MEM8(buf + o) = 0;
+    return buf;
+}
+
+/* Calls fn (a lifted text function) with its string argument, slot si on
+ * the stack, written with keys for A and B; the argument is put back after.
+ * Leaves the stack as fn does. */
+static void n_key_call(void (*fn)(void), int si)
+{
+    uint32_t e0 = g_esp, str = N_MEM32(e0 + 4u * (uint32_t)si), kt = n_key_text(str);
+
+    if (!kt) {
+        fn();
+        return;
+    }
+    N_MEM32(e0 + 4u * (uint32_t)si) = kt;
+    fn();
+    N_MEM32(e0 + 4u * (uint32_t)si) = str;
+}
+
+void ts2_key_text(void (*fn)(void), int si)
+{
+    n_key_call(fn, si);
+}
+
 static float n_width_upto(uint32_t str, uint32_t n)
 {
     int8_t keep;
@@ -717,7 +800,7 @@ static void n_text_parts(void (*draw)(void), int form, int si, int ci, uint32_t 
         if (form != TS2_TEXT_AT_INT)
             N_MEMF(e0 + 4u) = at;               /* the int form moves its own x */
         g_esp = e0;
-        draw();
+        n_key_call(draw, si);
         N_MEM8(str + p1) = end;
         at += w;
     }
@@ -738,14 +821,14 @@ void ts2_menu_text(void (*draw)(void), int form, int place)
     }
     str = N_MEM32(a + 4u * (uint32_t)si);
     if (!n_ptr_ok(str)) {
-        draw();
+        n_key_call(draw, si);
         return;
     }
     if (form == TS2_TEXT_AT_INT) {
         uint32_t xp = N_MEM32(a + 4), yp = N_MEM32(a + 8);
 
         if (!n_ptr_ok(xp) || !n_ptr_ok(yp)) {
-            draw();
+            n_key_call(draw, si);
             return;
         }
         x = (float)N_MEMI(xp);
@@ -766,12 +849,12 @@ void ts2_menu_text(void (*draw)(void), int form, int place)
         n_drawn_add(DR_HINT, place, 0, 2, x0, y - 2.0f, x + w, y + h);
         if (n_under(place, x0, y - 2.0f, x + w, y + h, 3.0f))
             N_MEM32(a + 4u * (uint32_t)ci) = n_lit(N_MEM32(a + 4u * (uint32_t)ci));
-        draw();
+        n_key_call(draw, si);
         return;
     }
     /* A centred or right-aligned line is not a hint line. */
     if (form == TS2_TEXT_AT_ALIGN && N_MEMI(a + 12) != 0) {
-        draw();
+        n_key_call(draw, si);
         return;
     }
     for (len = 0; len < 0x7F && N_MEM8(str + len); len++)
@@ -804,12 +887,12 @@ void ts2_menu_text(void (*draw)(void), int form, int place)
         k = e - 1u;
     }
     if (!hot) {
-        draw();
+        n_key_call(draw, si);
         return;
     }
     if (hot0 == 0 && hot1 >= len) {
         N_MEM32(a + 4u * (uint32_t)ci) = n_lit(N_MEM32(a + 4u * (uint32_t)ci));
-        draw();
+        n_key_call(draw, si);
         return;
     }
     n_text_parts(draw, form, si, ci, str, len, hot0, hot1, x);

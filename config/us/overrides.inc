@@ -205,6 +205,13 @@ extern void sub_001AC910_gen(void);   /* PAL 0x001ACD50, -0x440 */
 void sub_001AC910(void) { ts2_ui_enter(); sub_001AC910_gen(); ts2_ui_leave(); }
 extern void sub_001AC990_gen(void);   /* PAL 0x001ACDD0, -0x440 */
 void sub_001AC990(void) { ts2_ui_enter(); sub_001AC990_gen(); ts2_ui_leave(); }
+/* The game's measure of a line of text (string) -> width: while the
+ * keyboard and mouse drive a menu, a line naming the pad's A or B is
+ * measured with the keys written in their place, as it is then drawn
+ * (ts2_key_text, src/ts2_menu_mouse.c), so the hint bar lays it out at its
+ * new width. PAL not checked. */
+extern void sub_001AC170_gen(void);
+void sub_001AC170(void) { ts2_key_text(sub_001AC170_gen, 1); }
 extern void sub_001AC9F0_gen(void);   /* PAL 0x001ACE30, -0x440 */
 void sub_001AC9F0(void) { ts2_ui_enter(); ts2_menu_text(sub_001AC9F0_gen, TS2_TEXT_AT_ALIGN, ts2_ui_place_here()); ts2_ui_leave(); }
 extern void sub_001ACA50_gen(void);   /* PAL 0x001ACE90, -0x440 */
