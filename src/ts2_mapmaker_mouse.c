@@ -106,7 +106,10 @@ const char *ts2_mapmaker_b_key(void)
         if (recomp_bindings_key_name(0, "b", k, sizeof k))
             snprintf(name, sizeof name, "[%s]", k);
     }
-    return name[0] && ts2_mapmaker_editing() ? name : NULL;
+    /* Everywhere in MapMaker, not only in the editor: its Help screen
+     * explains the editor's B (delete), where Escape is Start, and on its
+     * screens Backspace is B as well. */
+    return name[0] && ts2_mapmaker_active() ? name : NULL;
 }
 
 static void mm_press(WORD buttons, int a, int b)

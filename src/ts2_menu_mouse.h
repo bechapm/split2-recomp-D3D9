@@ -209,7 +209,7 @@ uint32_t ts2_menu_level(void);
 int ts2_menu_esc_backs(void);
 
 /* MapMaker (src/ts2_mapmaker_mouse.c): the key a prompt names for B while
- * its editor is up, where Esc opens the editor's menu ("[Backspace]"), or
+ * MapMaker is up, where Esc opens the editor's menu ("[Backspace]"), or
  * NULL elsewhere. */
 const char *ts2_mapmaker_b_key(void);
 
