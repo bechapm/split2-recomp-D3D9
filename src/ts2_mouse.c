@@ -58,7 +58,7 @@
  *     cutscene or a level's fly-over), a click of the left button (fire,
  *     which skips nothing) is also the button that skips
  *     (ts2_skip_button). Not while the debugging tools' free camera has
- *     the mouse.
+ *     the mouse, nor on a mounted gun, whose camera may be its own.
  *
  * The keys themselves are config/input_defaults.json, the title's own layout
  * (recomp_title_input in CMakeLists.txt).
@@ -226,8 +226,10 @@ static void m_filter(unsigned port, XBOX_GAMEPAD *pad, const XBOX_GAMEPAD *from_
     /* A cutscene: the click that fires is the skip as well. */
     {
         int fire = kbm->bAnalogButtons[XBOX_BUTTON_RTRIGGER] > 0;
+        uint32_t mode = p ? M_MEM32(p + TS2_PM_MODE) : 0;
 
-        if (fire && !M.fire_down && p && !m_camera_is_eye(p) && M.frame - M.turned > 3u) {
+        if (fire && !M.fire_down && p && !m_camera_is_eye(p) && M.frame - M.turned > 3u &&
+            mode != TS2_MODE_MOUNT_CLAMPED && mode != TS2_MODE_MOUNT) {
             int analog;
 
             M.skip_buttons = ts2_skip_button(&analog);

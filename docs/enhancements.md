@@ -124,11 +124,17 @@ Controller, Enter Name, the Inventory page) takes a click as Start and the
 right button as B. A click on an option's value steps it the way of the half
 it is on (or of the arrow), laid out as `sub_000F1230` draws it; a click on a
 button hint is its button, laid out as `sub_000EFEB0` draws them; a click on a
-pause page's arrow (`sub_000D1A00`) is the D-pad's left or right. Both are
-measured with the game's own text width (`sub_001AC170`), called from the
-present. A click skips a cutscene: in the front end with no screen up, and in
-a level while the camera is not the player's eye (`src/ts2_mouse.c`), as the
-button `RECOMP_TS2_SKIP_BUTTON` names. Not yet: the PAL release; Enter Name's
+pause page's arrow (`sub_000D1A00`) is the D-pad's left or right. The hints and
+values are measured with the game's own text width (`sub_001AC170`), called
+from the present. In widescreen the arrows have no place of their own in
+`k_ts2_ui_places`, so the width guess moves them: one arrow alone goes in the
+middle 4:3, two together are stretched, and a click is taken at either spot.
+Fixing that takes a wrap of `sub_000D1A00` and a relift. A click skips a
+cutscene: in the front end with no screen up, and in a level while the camera
+is not the player's eye and the player is not on a mounted gun
+(`src/ts2_mouse.c`), as the button `RECOMP_TS2_SKIP_BUTTON` names. A, the
+default, and Start skip the Siberia opening, its fly-over and the Introduction
+in Options; B does not. Not yet: the PAL release; Enter Name's
 letters; and MapMaker's grid cursor, which the game drives with its own
 pointer: screens keep a list of 0x18-byte hot spots (`S+0x64C`, count
 `S+0x650`) that `sub_00086FE0` tests against a cursor at `F+0x32`/`F+0x36`.

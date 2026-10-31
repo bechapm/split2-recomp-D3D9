@@ -44,7 +44,8 @@
  *
  * A cutscene is skipped by a click: in the front end, a click with no
  * screen up; in a level, src/ts2_mouse.c (where the left button is fire).
- * RECOMP_TS2_SKIP_BUTTON says which pad button that is (a, b, start, back).
+ * RECOMP_TS2_SKIP_BUTTON says which pad button that is (a, b, start, back):
+ * A by default. A and Start skip a cutscene and a level's fly-over, B does not.
  *
  * In widescreen the menus are drawn in proportion, in the middle 4:3 of the
  * picture (k_ts2_ui_places has every panel and item site as CENTRE), so a
@@ -477,6 +478,15 @@ static int n_hint_at(uint32_t s, float x, float y)
                 hy = (float)(int)(hy + h + 4.0f);
                 hx = 40.0f;
             }
+            if (N.log) {
+                char t[32];
+
+                for (j = 0; j < 31 && N_MEM8(str + (uint32_t)j); j++)
+                    t[j] = N_MEM8(str + (uint32_t)j) < 0x20 ? '~' : (char)N_MEM8(str + (uint32_t)j);
+                t[j] = 0;
+                fprintf(stderr, "[TS2-MENU]   hint %d \"%s\" at %.0f,%.0f, %d by %.0f; the click is at %.0f,%.0f\n",
+                        k, t, hx, hy, w, h, x, y);
+            }
             if (x >= hx - 4.0f && x < hx + (float)w + 4.0f && y >= hy - 4.0f && y < hy + h + 4.0f) {
                 for (j = 0; j < 0x7F && N_MEM8(str + (uint32_t)j); j++)
                     if (N_MEM8(str + (uint32_t)j) == 0x0B) {
@@ -493,22 +503,34 @@ static int n_hint_at(uint32_t s, float x, float y)
 }
 
 /* A pause menu page's arrows under (x, y): -1 the page before, 1 after.
- * sub_000D1A00 draws them 16 by 14 (one player), centred 55 below the
- * screen's place and 56 in from either side of its 640. Whether there is
- * such a page is the game's to say when the D-pad asks. */
-static int n_page_arrow(uint32_t s, float x, float y)
+ * sub_000D1A00 draws them 32 by 28 (one player), centred 62 below the
+ * screen's place and 64 in from either side of its 640. The screen slides
+ * in, so its place is read as it is now: (0, 49) once settled. Whether there
+ * is such a page is the game's to say when the D-pad asks.
+ *
+ * In widescreen they have no place of their own in k_ts2_ui_places (their
+ * draw shares a site with others), so the width guess decides: one arrow
+ * alone goes in the middle 4:3 with the menus, two together fill the width
+ * and are stretched. x is the pointer as the menus measure it, xs as a
+ * stretched picture does; either will do. */
+static int n_arrow_near(float x, float xs, float at)
+{
+    return fabsf(x - at) <= 16.0f + 6.0f || fabsf(xs - at) <= 16.0f + 6.0f;
+}
+
+static int n_page_arrow(uint32_t s, float x, float xs, float y)
 {
     float sx, sy;
 
     if (!A->page_prev || N_MEM32(A->level_id) >= A->level_menus)
         return 0;
     sx = (float)N_MEMI(s + TS2_MS_X);
-    sy = (float)N_MEMI(s + TS2_MS_Y) + 55.0f;
-    if (fabsf(y - sy) > 7.0f + 12.0f)
+    sy = (float)N_MEMI(s + TS2_MS_Y) + 62.0f;
+    if (fabsf(y - sy) > 14.0f + 6.0f)
         return 0;
-    if (N_MEM32(s + TS2_MS_LEFT) == A->page_prev && fabsf(x - (sx + 56.0f)) <= 8.0f + 14.0f)
+    if (N_MEM32(s + TS2_MS_LEFT) == A->page_prev && n_arrow_near(x, xs, sx + 64.0f))
         return -1;
-    if (N_MEM32(s + TS2_MS_RIGHT) == A->page_next && fabsf(x - (sx + 584.0f)) <= 8.0f + 14.0f)
+    if (N_MEM32(s + TS2_MS_RIGHT) == A->page_next && n_arrow_near(x, xs, sx + 576.0f))
         return 1;
     return 0;
 }
@@ -551,9 +573,11 @@ static void n_log_screen(uint32_t s)
     uint32_t p, i;
     int n, k, count;
 
-    fprintf(stderr, "[TS2-MENU] frame %u: screen %08X (flags 0x%X, %d on the stack), level %u\n",
+    fprintf(stderr, "[TS2-MENU] frame %u: screen %08X (flags 0x%X, %d on the stack), level %u, "
+                    "at %d,%d, left %08X right %08X\n",
             N.frame, s, N_MEM32(s + TS2_MS_FLAGS), N_MEMI(A->frontend + TS2_MF_COUNT),
-            N_MEM32(A->level_id));
+            N_MEM32(A->level_id), N_MEMI(s + TS2_MS_X), N_MEMI(s + TS2_MS_Y),
+            N_MEM32(s + TS2_MS_LEFT), N_MEM32(s + TS2_MS_RIGHT));
     for (p = N_MEM32(s + TS2_MS_PANELS), n = 0; n_ptr_ok(p) && n < 32;
          p = N_MEM32(p + TS2_MP_NEXT), n++) {
         float cl, ct, cr, cb;
@@ -574,9 +598,10 @@ static void n_log_screen(uint32_t s)
             n_box(p, i, &x0, &y0, &x1, &y1);
             n_row_col(p, i, &row, &col);
             fprintf(stderr, "[TS2-MENU]     item %08X flags 0x%X box %.0f,%.0f-%.0f,%.0f "
-                            "row %d column %d choices %d%s\n",
+                            "row %d column %d choices %d action %08X%s\n",
                     i, N_MEM32(i + TS2_MI_FLAGS), x0, y0, x1, y1, row, col,
-                    N_MEMI(i + TS2_MI_CHOICES), N_MEM32(i + TS2_MI_CHILD) ? " (child)" : "");
+                    N_MEMI(i + TS2_MI_CHOICES), N_MEM32(i + TS2_MI_ACTION),
+                    N_MEM32(i + TS2_MI_CHILD) ? " (child)" : "");
         }
     }
 }
@@ -785,7 +810,7 @@ void ts2_menu_frame(void)
     if (ptr.inside && (ptr.pressed & (1u << RECOMP_MOUSE_LEFT)) && N.frame >= N.gap_until) {
         int hint;
 
-        side = n_page_arrow(top, x, y);
+        side = n_page_arrow(top, x, ptr.x * TS2_MENU_W, y);
         if (side) {
             n_press(side < 0 ? XBOX_GAMEPAD_DPAD_LEFT : XBOX_GAMEPAD_DPAD_RIGHT, 0, 0);
             if (N.log)
