@@ -4,7 +4,7 @@ Tools for setting up a test scene and holding it still: god mode, infinite
 ammo, invisibility to enemies, every unlock, stopping the game's clock or
 changing its speed, a readout of where you are and what the crosshair is
 on, saving and returning to a position, a free camera, noclip, room
-culling switched off, a wireframe view, hiding the HUD and giving yourself any weapon or item, all
+culling switched off, a wireframe view, the game's soften turned down or off, hiding the HUD and giving yourself any weapon or item, all
 from a menu on screen. They are TimeSplitters 2's own
 (`src/ts2_devtools.c`); the toolkit only supplies the keyboard, the overlay's
 lines and the pad. USA release only for now, apart from unlock everything, which
@@ -15,7 +15,7 @@ PAL has too.
 **F1**, or both sticks clicked in together (**L3+R3**), opens and closes it.
 Up and down (the D-pad, the left stick or the arrow keys) choose a row, **A**
 or **Enter** sets it, left and right change a value (the game speed, the
-item to give, room culling), **B**
+item to give, room culling, soften passes), **B**
 or **Esc** closes. The game reads an idle controller while the menu is open.
 Choosing the free camera or noclip closes the menu, so the controller drives
 them.
@@ -36,6 +36,7 @@ TS2 DEV MENU
   Save position
   Back to saved position
   Wireframe                off
+  Soften (glow) passes     < 3, as the console >
   HUD                      ON
   Give item                < Sniper Rifle >
 A/Enter set  left/right change  B/Esc close
@@ -60,6 +61,7 @@ per line, or set the environment variable beside it:
 | `ts2_give_item = 11` | `RECOMP_TS2_GIVE_ITEM` | The item "Give item" starts on (its number in the game's item list) |
 | `ts2_teleport = x,y,z[,yaw,pitch]` | `RECOMP_TS2_TELEPORT` | Where you are put once the first level is playing |
 | `ts2_room_culling = auto` | `RECOMP_TS2_ROOM_CULLING` | Room culling: `auto` (the default) is the game's own, switched off while the free camera or noclip is on; `off` draws every room all the time; `on` keeps the game's even with those tools |
+| `frame_passes = 2` | `RECOMP_FRAME_PASSES` | How many of the game's three soften passes are drawn: 0 to 3 (unset: all three). The toolkit's setting, which the menu row changes |
 | `ts2_dev_seq = FRAME:ACTION,...` | `RECOMP_TS2_DEV_SEQ` | The menu's actions at given frames (below) |
 | | `RECOMP_TS2_POSITIONS` | Where saved positions are kept (default `ts2_positions.txt` beside the executable) |
 
@@ -87,6 +89,28 @@ that reuses one space for two rooms that are never seen together (Siberia's
 lowest tunnel and the room above it) shows both there, which is why it is
 not the default in normal play. `ALLROOMS` in the readout means every room
 is being drawn.
+
+**Soften (glow) passes.** At the end of every frame the game copies its
+finished picture and lays it back over itself three times, each copy shifted
+by one console pixel and partly see-through (about 20%, 25% and under 10%).
+That softens the whole picture slightly: on a 480-line television it hid
+jagged edges and shimmer. The row draws all three (as the console does), 2, 1
+or none; A and right step down, left steps up. With fewer, the picture is
+crisper. The toolkit draws the first passes of a frame and drops
+the rest (`xbox_D3D8SetFramePassLimit`, see its
+`docs/technical/widescreen-and-resolution.md`), and since November 2026 it
+copies the frame for them at the resolution rendered, so leaving them on no
+longer drags a high resolution down to 480 lines.
+
+```text
+ finished frame ──copy──> texture (scene's size)
+       │                      │
+       │   pass 1: copy, 1 px off, ~20%    ┐
+       ├── pass 2: copy, 1 px off, ~25%    ├─ "Soften (glow) passes" keeps 3, 2, 1 or 0
+       │   pass 3: copy, 1 px off, 4-10%   ┘
+       v
+   on screen
+```
 
 **Noclip.** You move with your usual controls, through walls, along the
 direction you are looking: look up and push forward to climb. God mode stays
@@ -123,7 +147,8 @@ RECOMP_TS2_DEV_SEQ=4200:freeze,4210:freecam,4600:step,4700:freeze,4710:freecam
 
 The actions are `readout god ammo invisible unlock save load freecam noclip
 freeze step wireframe faster slower menu hud give itemnext itemprev culling
-cullingprev` (`culling` steps room culling auto, off, on). The free camera and noclip read controller 1, so
+cullingprev soften softenprev` (`culling` steps room culling auto, off, on;
+`soften` steps the soften passes 3, 2, 1, off). The free camera and noclip read controller 1, so
 `RECOMP_INPUT_SEQ` moves them (`<ms>:<control>:<hold ms>`, for example
 `90000:lstick_up:2000,93000:rstick_right:500,94000:rt:800`).
 `ts2_teleport` and a saved position make a test start from the same spot

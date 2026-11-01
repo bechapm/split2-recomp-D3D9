@@ -34,7 +34,8 @@
  *                          present), for scripted runs: readout god ammo
  *                          unlock save load freecam noclip freeze step
  *                          invisible wireframe faster slower menu hud give
- *                          itemnext itemprev
+ *                          itemnext itemprev culling cullingprev soften
+ *                          softenprev
  *   ts2_hud = 0            RECOMP_TS2_HUD          the game's HUD hidden from the start
  *   ts2_give_item = 11     RECOMP_TS2_GIVE_ITEM    the item "Give item" starts on
  *   ts2_teleport = x,y,z[,yaw,pitch]  RECOMP_TS2_TELEPORT
@@ -45,6 +46,9 @@
  *                          off while the free camera or noclip is on; off:
  *                          every room drawn all the time; on: the game's
  *                          culling even with those tools
+ *   frame_passes = 0..3    RECOMP_FRAME_PASSES     the toolkit's: how many of
+ *                          the game's three soften passes are drawn (the
+ *                          menu's "Soften (glow) passes"; unset, all three)
  *
  * F1 is the only key of its own (while the game's window is in front):
  * every tool is a row of the menu.
@@ -153,6 +157,8 @@ extern int         xbox_D3D8KeyDown(int vk);
 extern void        xbox_D3D8Notice(const char *text, unsigned ms);
 extern void        xbox_D3D8SetWireframe(int on);
 extern int         xbox_D3D8Wireframe(void);
+extern void        xbox_D3D8SetFramePassLimit(int n);
+extern int         xbox_D3D8FramePassLimit(void);
 extern void        xbox_InputWithhold(unsigned port, int on);
 extern int         xbox_InputRead(unsigned port, uint16_t *buttons, uint8_t analog[8],
                                   int16_t thumbs[4]);
@@ -1352,7 +1358,7 @@ enum {
     ACT_READOUT, ACT_GOD, ACT_AMMO, ACT_UNLOCK, ACT_SAVE, ACT_LOAD,
     ACT_FREECAM, ACT_NOCLIP, ACT_FREEZE, ACT_STEP, ACT_INVISIBLE, ACT_WIREFRAME,
     ACT_FASTER, ACT_SLOWER, ACT_MENU, ACT_HUD, ACT_GIVE, ACT_ITEM_NEXT, ACT_ITEM_PREV,
-    ACT_CULLING, ACT_CULLING_PREV,
+    ACT_CULLING, ACT_CULLING_PREV, ACT_SOFTEN, ACT_SOFTEN_PREV,
     ACT_COUNT
 };
 
@@ -1360,8 +1366,21 @@ static const char *const k_dev_actions[ACT_COUNT] = {
     "readout", "god", "ammo", "unlock", "save", "load",
     "freecam", "noclip", "freeze", "step", "invisible", "wireframe",
     "faster", "slower", "menu", "hud", "give", "itemnext", "itemprev",
-    "culling", "cullingprev",
+    "culling", "cullingprev", "soften", "softenprev",
 };
+
+/* The soften the game draws over its finished frame: three passes, each
+ * the frame copied and laid back over itself a console pixel off, partly
+ * see-through (docs/devtools.md, "Soften"). The toolkit draws the first n
+ * of a frame (xbox_D3D8SetFramePassLimit); here, how many are kept. */
+#define TS2_SOFTEN_PASSES 3
+
+static int dev_soften_passes(void)
+{
+    int n = xbox_D3D8FramePassLimit();
+
+    return n < 0 || n > TS2_SOFTEN_PASSES ? TS2_SOFTEN_PASSES : n;
+}
 
 static void dev_action(int act, uint32_t p)
 {
@@ -1489,6 +1508,24 @@ static void dev_action(int act, uint32_t p)
                 D.culling == DEV_CULL_OFF ? "room culling OFF: every room drawn" :
                 "room culling on: the game's, always");
         break;
+    case ACT_SOFTEN:
+    case ACT_SOFTEN_PREV: {
+        /* 3 (all of them, as the console draws), 2, 1, none: A and right
+         * step down, left up. The game draws three a frame; "all" is the
+         * toolkit's -1, so a frame with more keeps every one. */
+        int n = dev_soften_passes();
+
+        n = act == ACT_SOFTEN ? (n + TS2_SOFTEN_PASSES) % (TS2_SOFTEN_PASSES + 1)
+                              : (n + 1) % (TS2_SOFTEN_PASSES + 1);
+        xbox_D3D8SetFramePassLimit(n >= TS2_SOFTEN_PASSES ? -1 : n);
+        if (n >= TS2_SOFTEN_PASSES)
+            dev_say("soften: all %d passes, as the console", TS2_SOFTEN_PASSES);
+        else if (n)
+            dev_say("soften: %d pass%s of %d", n, n == 1 ? "" : "es", TS2_SOFTEN_PASSES);
+        else
+            dev_say("soften OFF");
+        break;
+    }
     case ACT_INVISIBLE:
         D.invisible = !D.invisible;
         dev_cloak();
@@ -1581,10 +1618,10 @@ static void dev_configure(void)
         D.start_tp_pending = dev_parse_spot(v, D.start_tp, &D.start_tp_angles);
     fprintf(stderr, "[TS2-DEV] menu %s (F1 or L3+R3), god %d, "
             "infinite ammo %d, unlock all %d, invisible %d, readout %d, HUD %d, speed %gx, "
-            "room culling %s%s (src/ts2_devtools.c, docs/devtools.md)\n",
+            "room culling %s, soften passes %d%s (src/ts2_devtools.c, docs/devtools.md)\n",
             D.keys ? "on" : "off (ts2_dev = 0)", D.god, D.ammo, D.unlock, D.invisible,
             D.readout, !D.hud_off, (double)k_dev_speeds[D.speed], k_dev_cull_names[D.culling],
-            D.start_tp_pending ? ", teleport at the first level" : "");
+            dev_soften_passes(), D.start_tp_pending ? ", teleport at the first level" : "");
 }
 
 /* What the middle of the view is on: the game's own ray, from just ahead of
@@ -1698,6 +1735,7 @@ static const struct { const char *label; int act, left, right; } k_dev_menu[] = 
     { "Save position",            ACT_SAVE,      -1, -1 },
     { "Back to saved position",   ACT_LOAD,      -1, -1 },
     { "Wireframe",                ACT_WIREFRAME, -1, -1 },
+    { "Soften (glow) passes",     ACT_SOFTEN,    ACT_SOFTEN_PREV, ACT_SOFTEN },
     { "HUD",                      ACT_HUD,       -1, -1 },
     { "Give item",                ACT_GIVE,      ACT_ITEM_PREV, ACT_ITEM_NEXT },
 };
@@ -1734,6 +1772,17 @@ static const char *dev_menu_value(int row, char *buf, size_t n)
     case ACT_CULLING:
         snprintf(buf, n, "< %s >", k_dev_cull_names[D.culling]);
         return buf;
+    case ACT_SOFTEN: {
+        int k = dev_soften_passes();
+
+        if (k >= TS2_SOFTEN_PASSES)
+            snprintf(buf, n, "< %d, as the console >", k);
+        else if (k)
+            snprintf(buf, n, "< %d >", k);
+        else
+            snprintf(buf, n, "< off >");
+        return buf;
+    }
     default:
         return "";
     }
