@@ -440,7 +440,10 @@ void recomp_icall_not_code_log(uint32_t va, uint32_t saved_esp)
 /* ── TimeSplitters 2: the widescreen camera ───────────────── */
 
 /*
- * TimeSplitters 2 has no 16:9 mode. The toolkit's Hor+ (RECOMP_HOR_PLUS)
+ * TimeSplitters 2 has no 16:9 mode. Widescreen here is any shape the player
+ * picks in the launcher (aspect_ratio: 16:9, 16:10, 21:9, 32:9, the screen's
+ * own); everything below follows the toolkit's factor for it, and nothing
+ * here knows a shape. The toolkit's Hor+ (RECOMP_HOR_PLUS)
  * widens it by scaling the projection register as it is uploaded, but the
  * game culls against its own numbers: past the old 4:3 edges, and through
  * doorways, whole pieces of the level were missing and the sky showed
@@ -470,8 +473,12 @@ extern void  xbox_D3D8SetWideFrames(int wide);
 #define TS2_MEM32(a) (*(volatile uint32_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 
 /* The factor to multiply the camera's aspect by: 1 when no wider view is
- * wanted, 4/3 for the usual Hor+ 0.75. Claiming it stops the toolkit
- * scaling the register as well, which would widen the view twice. */
+ * wanted, 4/3 for the usual Hor+ 0.75 (16:9), 1.75 at 21:9, 2.667 at 32:9:
+ * the toolkit works it out from the player's aspect ratio. Claiming it
+ * stops the toolkit scaling the register as well, which would widen the
+ * view twice. Claimed at the first present too (ts2_present), so the
+ * toolkit, told by CMakeLists.txt that this game needs its camera widened,
+ * never scales c60 for the frames before the first camera. */
 static float ts2_camera_widen(void)
 {
     static float widen;
@@ -641,6 +648,7 @@ static void ts2_present(void (*present)(void))
     if (!interp_said) {
         interp_said = 1;
         xbox_D3D8SetInterpRegisters(60, 64, 12);
+        ts2_camera_widen();                /* claims the factor; see there */
     }
     present();
     ts2_dev_frame();                       /* src/ts2_devtools.c */
