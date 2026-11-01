@@ -12,8 +12,8 @@ Estimates are working time; calendar time will be longer. They date from
 
 | Enhancement | Where | Notes |
 | --- | --- | --- |
-| Widescreen (16:9) | Both | Camera widened where the game builds it, so culling agrees; front end, HUD and every other screen laid out for 16:9 by call site. `RECOMP_TS2_MENUS=43` brings back the 4:3 front end. |
-| Internal resolution | Toolkit | `RECOMP_RES_SCALE=1..8` |
+| Widescreen (any shape) | Both | `aspect_ratio` (launcher row Aspect ratio): 16:9, 16:10, 21:9, 32:9 or the screen's. Camera widened where the game builds it by the toolkit's (4/3)/aspect, so culling agrees; front end, HUD and every other screen laid out by call site, with edge pieces pinned to the picture's edges. CMakeLists.txt declares `recomp_title_widescreen(HOR_PLUS REGISTER 60)` so the launcher offers every shape. `RECOMP_TS2_MENUS=43` brings back the 4:3 front end. |
+| Internal resolution | Toolkit | `resolution` = lines (480 to 8640, or `screen`), the width following the shape; `RECOMP_RES_SCALE=1..8` still works |
 | Vulkan renderer | Toolkit | The renderer on macOS. On Windows `RECOMP_D3D8_BACKEND=vulkan`, which needs `third_party/dxc` (the DXC GitHub release) for the build |
 | Launcher mouse input | Toolkit | Arrow hit boxes match what is drawn (xboxrecomp #24) |
 | Variable refresh rate | Toolkit | Borderless fullscreen (Alt+Enter), VRR presents on both renderers; launcher rows Fullscreen and Variable refresh rate (xboxrecomp #29) |
