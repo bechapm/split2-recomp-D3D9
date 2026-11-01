@@ -46,7 +46,54 @@ Estimates are working time; calendar time will be longer. They date from
 How to survey a screen: F11 with `RECOMP_TS2_UI_SITES=1` set, then
 `d3d8_replay --each-tag` / `--each-tag-hidden` on the capture and
 `--place <site>=<placement>` to try a placement before it goes into
-`src/recomp_manual.c`.
+`config/<region>/overrides.inc`.
+
+### How the 2D is laid out: anchors
+
+This is the anchor model of any modern UI, retrofitted. An engine's widget says what
+it is anchored to, and a web page's box has a flex or grid parent; the layout then
+works out the position from the screen's shape. This game's code only says x = 520,
+because it knew its screen, so the anchors are written down in
+`config/<region>/overrides.inc`. Every position is still calculated, by one factor,
+k = (4/3)/aspect, so every shape uses the same data and nothing is kept per
+resolution.
+
+```
+ what the game drew, 640 wide     where it goes, any shape
+ +-----------------+    +------------------------------------------------+
+ | rank     radar  |    | rank                                     radar |
+ |      panel      |    |                     panel                      |
+ | ammo      ammo  |    | ammo                                      ammo |
+ +-----------------+    +------------------------------------------------+
+                         LEFT            CENTRE, SPREAD             RIGHT
+                         <---------------- STRETCH ---------------------->
+```
+
+The anchor goes on the largest thing that moves together, and what is inside inherits
+it. A site's placement is the first of these (`ts2_ui_place_for`):
+
+| Level | Where | What it is for |
+| --- | --- | --- |
+| Exception | `k_ts2_ui_places` | One call site unlike the rest, as a full-screen fade or a page's arrow |
+| Group | `k_ts2_ui_groups` | The code that draws a whole piece, by address range: a menu panel, the radar, each hand's ammo |
+| Area | `ts2_ui_area_default` | All of a part of the game: the pause pages and MapMaker's editor keep what is not named in proportion. A group marked `hud` gives way to it, so the gauge the Inventory page borrows from the HUD stays on the page |
+| Default | `RECOMP_TS2_UI_PLAY` | While a level plays, SPREAD: a piece keeps its shape and its middle stays as far across the picture as it was across 4:3. In the front end, the renderer's width guess |
+
+A formula alone cannot do it: a position does not say what a piece is. The Select
+Level panel and the ammo sit in nearly the same 4:3 spot, one to stay by the middle and
+one to go to the corner. That is also why the ammo is a group and not SPREAD, which moves
+each draw by itself and would pull the row and its number apart as the picture widens.
+
+Every site gets a batch of its own (`RECOMP_TS2_UI_EACH_SITE=0` puts sites with the
+same placement back in one), since the width guess measures a whole draw: two small
+hints at opposite sides in one batch read as a wide piece and were stretched, flickering
+as the batch's cut moved. Tagging flushes per site either way, so
+`RECOMP_TS2_UI_SITES=1` hides a bug of this kind: check without it too.
+
+The squeeze is a viewport, so a piece reaching past the 4:3 edge would stop dead
+there. The menu panels' rays do, x -243 to 910 of 640, and they fade out by themselves
+further on, so the game turns on the toolkit's overflow
+(`xbox_D3D8SetTwoDOverflow`, `xboxrecomp/docs/technical/widescreen-and-resolution.md` 9).
 
 ## Candidates
 
@@ -126,10 +173,8 @@ it is on (or of the arrow), laid out as `sub_000F1230` draws it; a click on a
 button hint is its button, laid out as `sub_000EFEB0` draws them; a click on a
 pause page's arrow (`sub_000D1A00`) is the D-pad's left or right. The hints and
 values are measured with the game's own text width (`sub_001AC170`), called
-from the present. In widescreen the arrows have no place of their own in
-`k_ts2_ui_places`, so the width guess moves them: one arrow alone goes in the
-middle 4:3, two together are stretched, and a click is taken at either spot.
-Fixing that takes a wrap of `sub_000D1A00` and a relift. A click skips a
+from the present. In widescreen the arrows are pinned to the picture's edges,
+outside the ring, and the pointer follows their placement. A click skips a
 cutscene: in the front end with no screen up, and in a level while the camera
 is not the player's eye and the player is not on a mounted gun
 (`src/ts2_mouse.c`), as the button `RECOMP_TS2_SKIP_BUTTON` names. A, the

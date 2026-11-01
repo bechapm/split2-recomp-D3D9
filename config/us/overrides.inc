@@ -202,7 +202,7 @@ void sub_001B3AC0(void) { ts2_ui_enter(); sub_001B3AC0_gen(); ts2_ui_leave(); }
 extern void sub_000C4F10_gen(void);   /* PAL 0x000C4F80, -0x70 */
 void sub_000C4F10(void) { ts2_ui_enter(); sub_000C4F10_gen(); ts2_ui_leave(); }
 extern void sub_001B75A0_gen(void);   /* PAL 0x001B79B0, -0x410 */
-void sub_001B75A0(void) { ts2_ui_enter(); ts2_menu_sprite(); sub_001B75A0_gen(); ts2_ui_leave(); }
+void sub_001B75A0(void) { ts2_ui_enter(); ts2_menu_sprite(ts2_ui_place_here()); sub_001B75A0_gen(); ts2_ui_leave(); }
 extern void sub_001B7450_gen(void);   /* PAL 0x001B7860, -0x410 */
 void sub_001B7450(void) { ts2_ui_enter(); sub_001B7450_gen(); ts2_ui_leave(); }
 extern void sub_001B7540_gen(void);   /* PAL 0x001B7950, -0x410 */
@@ -286,10 +286,41 @@ void sub_000AA2F0(void) { ts2_menu_icon_at(sub_000AA2F0_gen); }
 extern void sub_001AD350_gen(void);
 void sub_001AD350(void) { ts2_menu_picker(sub_001AD350_gen); }
 
-/* Where TimeSplitters 2 (USA, this XBE) draws what: the PAL table with each
- * site moved to the USA return address of the same call -- the shift of its
- * stretch of code, checked on every entry to follow a call to one of the
- * functions wrapped above. Ends at site 0. */
+/* Where TimeSplitters 2 (USA, this XBE) draws what: the anchors of its 2D,
+ * as src/recomp_manual.c explains. Sites are return addresses, the PAL table's
+ * each moved to the USA return address of the same call. */
+
+/* Whole pieces of the UI, by the code that draws them. Ends at first 0. */
+const Ts2UiGroup k_ts2_ui_groups[] = {
+    /* Each menu panel, every screen's: its frame, shadow, rays, selection
+     * bar and lines (sub_000EE290 to sub_000F1230, under sub_000F2040 and
+     * sub_000F0240). Its rays reach far off the screen, x -243 to 910 of 640
+     * on the story screens, so they need the toolkit's overflow. */
+    { 0x000EE290, 0x000F2040, TS2_UI_CENTRE, 0 },
+    /* The pause pages' backing: the dim, the bars and rules, the backdrop. */
+    { 0x000CC9E0, 0x000CCC60, TS2_UI_STRETCH, 0 },
+    /* The handheld's map. It is drawn at the start of the frame into a
+     * corner of the back buffer (x 128 on, scissored to 128..309 by
+     * 0..181), copied out of it with CopyRects into the 128x128 texture the
+     * handheld's screen shows, and the screen is then cleared for the
+     * level. Whatever is drawn there has to stay at its own pixels, or
+     * widescreen's squeeze moves it out of the corner that is copied. */
+    { 0x000E4440, 0x000E6440, TS2_UI_STRETCH, 0 },
+    /* The HUD's corners. The rank badge. */
+    { 0x000BCE20, 0x000BD110, TS2_UI_LEFT, 1 },
+    /* The radar. */
+    { 0x000BF8F0, 0x000C0400, TS2_UI_RIGHT, 1 },
+    /* Each hand's ammo at its own bottom corner, one piece of code drawing
+     * both, hence SIDE: the numbers and their backing, whole strips of
+     * rounds, the strip with rounds gone and the spent ones, the type's
+     * picture and the gauge. Anchored as a group, not spread, or the row
+     * and its number would drift apart as the picture widens. The Inventory
+     * page draws the gauge too, and there the pause pages' area holds. */
+    { 0x000BE4C0, 0x000BF440, TS2_UI_SIDE, 1 },
+    { 0, 0, TS2_UI_AUTO, 0 }
+};
+
+/* Exceptions: sites a group or an area does not cover. Ends at site 0. */
 const Ts2UiPlace k_ts2_ui_places[] = {
     /* Full-screen quads, fades and post passes (the glow over the frame). */
     { 0x000224CA, TS2_UI_STRETCH }, { 0x000224F3, TS2_UI_STRETCH },
@@ -305,56 +336,34 @@ const Ts2UiPlace k_ts2_ui_places[] = {
     { 0x000896B4, TS2_UI_STRETCH }, { 0x0008974E, TS2_UI_STRETCH },
     { 0x000897FF, TS2_UI_STRETCH }, { 0x0008982A, TS2_UI_STRETCH },
     { 0x00089852, TS2_UI_STRETCH }, { 0x000898D7, TS2_UI_STRETCH },
+    /* The dim behind a panel, in the panel group's range. */
+    { 0x000EEA3F, TS2_UI_STRETCH },
     /* Left edge: the scrolling binary, the logo and the screen's name
-     * beneath it, the button hints. */
+     * beneath it, the button hints (in the panel group's range). */
     { 0x00088565, TS2_UI_LEFT }, { 0x000885BD, TS2_UI_LEFT },
     { 0x000897D6, TS2_UI_LEFT }, { 0x00089965, TS2_UI_LEFT },
     { 0x000EFFE5, TS2_UI_LEFT },
     /* Right edge: the purple glow. */
     { 0x00088972, TS2_UI_RIGHT },
-    /* Kept in proportion: panels, their glow and selection bar, menu
-     * items, the title logo, the level name, the loading picture. The glow
-     * (000EF3F4) is the panel's shadow as well as its rays, so it stays
-     * with the panel; on the story screens, where the panel is at the
-     * right, its rays end at the old edge. */
-    { 0x000EF3F4, TS2_UI_CENTRE }, { 0x000EF00A, TS2_UI_CENTRE },
-    { 0x000EEB67, TS2_UI_CENTRE }, { 0x000EFCD6, TS2_UI_CENTRE },
-    { 0x000EE359, TS2_UI_CENTRE }, { 0x000EE3D4, TS2_UI_CENTRE },
-    { 0x000EE3B8, TS2_UI_CENTRE }, { 0x000EE398, TS2_UI_CENTRE },
-    { 0x000EE374, TS2_UI_CENTRE }, { 0x000EE61D, TS2_UI_CENTRE },
-    { 0x000F155A, TS2_UI_CENTRE }, { 0x000F15E6, TS2_UI_CENTRE },
+    /* Kept in proportion: the level name, the loading picture. */
     { 0x00088F73, TS2_UI_CENTRE }, { 0x0008905B, TS2_UI_CENTRE },
-    { 0x000EFA27, TS2_UI_CENTRE }, { 0x00089CF5, TS2_UI_CENTRE },
-    { 0x001A1CEB, TS2_UI_CENTRE }, { 0x000895A6, TS2_UI_CENTRE },
+    { 0x00089CF5, TS2_UI_CENTRE }, { 0x001A1CEB, TS2_UI_CENTRE },
+    { 0x000895A6, TS2_UI_CENTRE },
 
     /* Arcade screens: the hex backdrop, the level list's pictures, the
      * character select (portraits, name, stats, the picture of the one
-     * chosen), the panel's corners and scroll arrow, and the row of
-     * player figures at the bottom right, opposite the button hints. */
+     * chosen), and the row of player figures at the bottom right, opposite
+     * the button hints. */
     { 0x000A5045, TS2_UI_STRETCH },
     { 0x0008A3A2, TS2_UI_CENTRE }, { 0x0008F7F7, TS2_UI_CENTRE },
     { 0x0008F975, TS2_UI_CENTRE }, { 0x0008F9E6, TS2_UI_CENTRE },
     { 0x0008FBE3, TS2_UI_CENTRE }, { 0x001B706A, TS2_UI_CENTRE },
     { 0x001B70B3, TS2_UI_CENTRE }, { 0x001B70EF, TS2_UI_CENTRE },
-    { 0x000EE3FA, TS2_UI_CENTRE }, { 0x000EE416, TS2_UI_CENTRE },
-    { 0x000F022F, TS2_UI_CENTRE },
     { 0x0008E94D, TS2_UI_RIGHT },
 
-    /* In-game HUD, from an Arcade match: the rank badge in the top left
-     * corner, the radar in the top right, each hand's ammo at its own
-     * bottom corner (one piece of code draws both, hence SIDE), the kill
-     * message and the crosshair in the middle. The health and armour arcs
-     * are one ellipse framing the view, so it spans the picture. */
-    { 0x000BCECE, TS2_UI_LEFT },   { 0x000BCF3E, TS2_UI_LEFT },
-    { 0x000BD0B9, TS2_UI_LEFT },
-    { 0x000BFD4E, TS2_UI_RIGHT },  { 0x000BFF64, TS2_UI_RIGHT },
-    { 0x000BFFC3, TS2_UI_RIGHT },  { 0x000C0204, TS2_UI_RIGHT },
-    { 0x000C02B4, TS2_UI_RIGHT },  { 0x000C03CF, TS2_UI_RIGHT },
-    { 0x000BE5FC, TS2_UI_SIDE },   { 0x000BEDE7, TS2_UI_SIDE },
-    /* The dark backing drawn under each ammo number, from its own call
-     * site: left to the width guess it stayed in the 4:3 layout, beside
-     * the bars, while the number went to the corner. */
-    { 0x000BE5CF, TS2_UI_SIDE },
+    /* In-game HUD: the kill message and the crosshair in the middle. The
+     * health and armour arcs are one ellipse framing the view, so it spans
+     * the picture. */
     { 0x000BC2AC, TS2_UI_CENTRE }, { 0x00058610, TS2_UI_CENTRE },
     { 0x000C92DF, TS2_UI_STRETCH },
     /* Sprites the game places in the world and projects to the screen
@@ -363,30 +372,15 @@ const Ts2UiPlace k_ts2_ui_places[] = {
      * squeezing them would pull them off it. */
     { 0x001BFE0F, TS2_UI_STRETCH }, { 0x001BE7AE, TS2_UI_STRETCH },
     { 0x001BE7E4, TS2_UI_STRETCH }, { 0x001BE947, TS2_UI_STRETCH },
-    /* The handheld's map. It is drawn at the start of the frame into a
-     * corner of the back buffer (x 128 on, scissored to 128..309 by
-     * 0..181), copied out of it with CopyRects into the 128x128 texture the
-     * handheld's screen shows, and the screen is then cleared for the
-     * level. Whatever is drawn there has to stay at its own pixels, or
-     * widescreen's squeeze moves it out of the corner that is copied. */
-    { 0x000E6146, TS2_UI_STRETCH }, { 0x000E4C4E, TS2_UI_STRETCH },
-    { 0x000E50E7, TS2_UI_STRETCH }, { 0x000E51B5, TS2_UI_STRETCH },
-    { 0x000E4458, TS2_UI_STRETCH }, { 0x000E44E1, TS2_UI_STRETCH },
-    { 0x000E53C5, TS2_UI_STRETCH }, { 0x000E63EC, TS2_UI_STRETCH },
     /* Pause menu (in-game Start): the ring of health and armour arcs
      * (sub_000D1DD0, every page, through the same arc helper as the HUD's
-     * 000C92DF) and the dark cap across its top. Left to the width guess,
-     * a piece of the ring the engine's batch cut off at less than 75% of
-     * the width -- the cut point moves frame to frame as the batch fills --
-     * was squeezed for that frame, and the arc flickered inward. */
+     * 000C92DF) and the dark cap across its top, which span the picture
+     * where the pages' area keeps the rest in proportion. The page arrows
+     * stay outside the ring (sub_000D1A00; ts2_menu_sprite takes the pointer
+     * to them): the first draw is the right one. */
     { 0x000D1E8F, TS2_UI_STRETCH },
     { 0x000CDA90, TS2_UI_STRETCH }, { 0x000CDAB6, TS2_UI_STRETCH },
-    /* Its backing: the dim, letterbox bars and rules, the blue backdrop.
-     * Always full width, so the guess got them right; set so they stay
-     * right under RECOMP_WIDESCREEN_2D=centre too. */
-    { 0x000CCB1F, TS2_UI_STRETCH }, { 0x000CCB43, TS2_UI_STRETCH },
-    { 0x000CCB67, TS2_UI_STRETCH }, { 0x000CCB95, TS2_UI_STRETCH },
-    { 0x000CCBC0, TS2_UI_STRETCH }, { 0x000CCA8E, TS2_UI_STRETCH },
+    { 0x000D1BB6, TS2_UI_RIGHT },  { 0x000D1C32, TS2_UI_LEFT },
     { 0, TS2_UI_AUTO }
 };
 

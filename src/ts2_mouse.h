@@ -114,8 +114,8 @@ enum { TS2_ARROW_RIGHT = 0, TS2_ARROW_LEFT, TS2_ARROW_UP, TS2_ARROW_DOWN };
 void ts2_menu_arrow(int dir);
 
 /* Any sprite (x0, y0, x1, y1, u0, v0, u1, v1, colour), before its body runs:
- * the pause menu's page arrows are drawn as these. */
-void ts2_menu_sprite(void);
+ * the pause menu's page arrows are drawn as these. place as ts2_menu_text's. */
+void ts2_menu_sprite(int place);
 
 /* A sprite by id (float x, float y, id, colour), before its body runs:
  * MapMaker's tab arrows are drawn as these (sub_000AA5B0). */
@@ -146,6 +146,7 @@ void ts2_menu_picker(void (*fn)(void));
  * its table does not name, while MapMaker's editor is up; -1 for the
  * usual. */
 void ts2_ui_area_default(int place);
+void ts2_ui_playing(int playing);
 
 /* A lifted text function whose string is argument si (the game's measure
  * of text, sub_001AC170 in the USA release): called with the pad's A and B

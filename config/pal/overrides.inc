@@ -262,3 +262,6 @@ const Ts2UiPlace k_ts2_ui_places[] = {
     { 0x000CCC20, TS2_UI_STRETCH }, { 0x000CCAEE, TS2_UI_STRETCH },
     { 0, TS2_UI_AUTO }
 };
+
+/* No groups here yet: every site is in the table above. */
+const Ts2UiGroup k_ts2_ui_groups[] = { { 0, 0, TS2_UI_AUTO, 0 } };

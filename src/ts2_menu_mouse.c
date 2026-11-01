@@ -199,7 +199,7 @@ static struct {
     unsigned icon_over_frame;
     /* The D-pad's picture being drawn (ts2_menu_dpad): its corner and the
      * ways it offers (up, down, left, right). */
-    int      mapmaker_ui;    /* MapMaker's placement was asked for */
+    int      ui_area;        /* the placement asked for an area, or -1 */
     int      dpad_on;
     float    dpad_x, dpad_y;
     int      dpad_way[4];
@@ -725,7 +725,7 @@ static void n_dpad_box(int k, float *x0, float *y0, float *x1, float *y1)
     *y1 = *y0 + 16.0f;
 }
 
-void ts2_menu_sprite(void)
+void ts2_menu_sprite(int place)
 {
     uint32_t a = g_esp, ret;
     float x0, y0, x1, y1;
@@ -758,8 +758,8 @@ void ts2_menu_sprite(void)
     }
     if (!A->page_draw || ret < A->page_draw || ret >= A->page_draw_end)
         return;
-    n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, x0 + x1 < TS2_MENU_W ? -1 : 1, 0, x0, y0, x1, y1);
-    if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 6.0f))
+    n_drawn_add(DR_PAGE, place, x0 + x1 < TS2_MENU_W ? -1 : 1, 0, x0, y0, x1, y1);
+    if (n_under(place, x0, y0, x1, y1, 6.0f))
         N_MEM32(a + 0x24) = n_lit(N_MEM32(a + 0x24));
 }
 
@@ -1923,7 +1923,7 @@ void ts2_menu_frame(void)
     Hit hit;
     Target cur;
     float x = 0.0f, y = 0.0f;
-    int over, moved, down, up, in_level, mapmaker;
+    int over, moved, down, up, in_level, mapmaker, area;
 
     N.frame++;
     /* What was drawn this frame is measured against from now on, and the
@@ -1948,12 +1948,17 @@ void ts2_menu_frame(void)
 
     in_level = N_MEM32(A->level_id) < A->level_menus;
     mapmaker = ts2_mapmaker_active();
-    /* MapMaker's editor in widescreen: everything in proportion, so the
-     * grid, the hand and the pointer agree (src/recomp_manual.c). */
-    if (mapmaker != N.mapmaker_ui) {
-        N.mapmaker_ui = mapmaker;
-        ts2_ui_area_default(mapmaker ? TS2_PLACE_CENTRE : -1);
+    /* In widescreen, what the placement table does not name while a part of
+     * the game whose pieces belong together is up (src/recomp_manual.c):
+     * in proportion in MapMaker's editor, so the grid, the hand and the
+     * pointer agree, and on the pause pages, so no line of text is left to
+     * the renderer's width guess. The ring and backdrops are in the table. */
+    area = mapmaker || (in_level && A->pause && N_MEMI(A->pause) > 0) ? TS2_PLACE_CENTRE : -1;
+    if (area != N.ui_area) {
+        N.ui_area = area;
+        ts2_ui_area_default(area);
     }
+    ts2_ui_playing(in_level);
     s = n_menu();
     /* In the front end the pointer stays through the gaps between screens
      * and on the screens with nothing to select, and in a level it stays

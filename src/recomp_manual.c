@@ -648,6 +648,7 @@ extern void xbox_D3D8SetInterpRegisters(int projection, int affine_first, int af
  * picture measured twice as sharp (1 Nov 2026). frame_passes = 3 (or the
  * dev menu's "Soften (glow) passes") brings back the console's look. */
 extern void xbox_D3D8SetFramePassLimit(int n);
+extern void xbox_D3D8SetTwoDOverflow(int on);
 
 static void ts2_soften_default(void)
 {
@@ -665,6 +666,9 @@ static void ts2_present(void (*present)(void))
     if (!interp_said) {
         interp_said = 1;
         xbox_D3D8SetInterpRegisters(60, 64, 12);
+        /* The menu panels' rays reach far past the 4:3 edge, and fade out by
+         * themselves; they are cut there otherwise. */
+        xbox_D3D8SetTwoDOverflow(1);
         ts2_camera_widen();                /* claims the factor; see there */
         ts2_soften_default();
     }
@@ -687,6 +691,26 @@ static void ts2_present(void (*present)(void))
  * edge (a HUD corner) the renderer can only guess from the vertices, and the
  * guess changes as things animate: the menu header juddered between the two.
  *
+ * This is the anchor model of any modern UI, retrofitted. An engine's widget
+ * says what it is anchored to and the layout is worked out from the screen's
+ * shape; this game's code only says x = 520, because it knew its screen. So
+ * the anchors are written down here, and every position is still calculated,
+ * by the factor (4/3)/aspect, whatever the shape: nothing is by resolution.
+ * Anchors go on the largest thing that moves together, and what is inside
+ * inherits them. A site's placement is the first of:
+ *
+ *   exception  k_ts2_ui_places: this one site
+ *   group      k_ts2_ui_groups: the code that draws a whole piece
+ *   area       ts2_ui_area_default: all of a part of the game (pause pages,
+ *              MapMaker's editor); a group marked hud gives way to it
+ *   default    while a level plays, SPREAD: the piece keeps its shape and its
+ *              middle stays as far across the picture as it was across 4:3.
+ *              In the front end, the renderer's width guess.
+ *
+ * Why not a formula alone: a position cannot say what a piece is. The Select
+ * Level panel and the ammo sit in nearly the same 4:3 spot, one to stay by
+ * the middle and one to go to the corner.
+ *
  * The code that drew a piece says what it is, the same way every frame. All
  * of the game's 2D reaches the GPU through one call, reserve(primitive,
  * format, ?, count), which reserves vertices in the engine's batch for the
@@ -697,8 +721,7 @@ static void ts2_present(void (*present)(void))
  *   - the engine's shared drawing functions above it are wrapped too, so a
  *     piece drawn through one is credited to the UI code that called it --
  *     the *site* is the caller of the outermost wrapped function;
- *   - k_ts2_ui_places says where each known site goes; unknown ones
- *     are left to the renderer (AUTO), exactly as before;
+ *   - the anchors above say where each site goes;
  *   - a reservation whose placement differs from the batch's flushes the
  *     batch first; the renderer is given the batch's placement as soon as
  *     anything is queued (the engine draws the batch by more than one way),
@@ -717,10 +740,13 @@ static void ts2_present(void (*present)(void))
  *   RECOMP_TS2_UI_PLACE=<list>  site=placement pairs, comma separated, over
  *                               the table: 0008A0C1=stretch,000AB123=left
  *   RECOMP_TS2_UI_DEFAULT=<p>   placement for sites not in the table (auto)
+ *   RECOMP_TS2_UI_PLAY=<p>      default while a level plays (spread)
+ *   RECOMP_TS2_UI_EACH_SITE=0   let sites with the same placement share a
+ *                               batch, as they did before (see ts2_ui_reserve)
  */
 
 enum { TS2_UI_AUTO = 0, TS2_UI_STRETCH, TS2_UI_CENTRE, TS2_UI_LEFT, TS2_UI_RIGHT,
-       TS2_UI_SIDE };
+       TS2_UI_SIDE, TS2_UI_EDGE, TS2_UI_SPREAD };
 
 /* xboxrecomp src/hle/hle_d3d8_record.h: xbox_D3D8SetTwoDPlacement, recorded in
  * frame captures so a capture replays with these placements. Same values
@@ -729,6 +755,9 @@ extern void host_SetTwoDPlacement(int placement, uint32_t tag);
 extern int  recomp_config_bool(const char *env_name, const char *key, int fallback);
 
 typedef struct Ts2UiPlace { uint32_t site; int placement; } Ts2UiPlace;
+/* Sites from first up to last, the code drawing one piece of the UI; hud:
+ * it gives way to an area, as a part of the HUD a pause page borrows does. */
+typedef struct Ts2UiGroup { uint32_t first, last; int placement, hud; } Ts2UiGroup;
 
 /* Where the game draws what: each release's own table, in its
  * config/<region>/overrides.inc. Sites are return addresses in the game's
@@ -744,14 +773,18 @@ typedef struct Ts2UiPlace { uint32_t site; int placement; } Ts2UiPlace;
  * renderer's width guess was sometimes kept at 4:3, and its edge showed
  * as a seam down both old borders on every screen. */
 extern const Ts2UiPlace k_ts2_ui_places[];
+extern const Ts2UiGroup k_ts2_ui_groups[];
 
 static Ts2UiPlace g_ts2_ui_extra[64];   /* RECOMP_TS2_UI_PLACE */
 static int        g_ts2_ui_extra_count;
 static int        g_ts2_ui_default = TS2_UI_AUTO;
+static int        g_ts2_ui_play_default = TS2_UI_SPREAD;
+static volatile int g_ts2_ui_playing;   /* a level is up (ts2_ui_playing) */
 /* The placement for sites not in the table while a part of the game whose
  * every piece belongs together is up, or -1 (ts2_ui_area_default). */
 static volatile int g_ts2_ui_area = -1;
 static int        g_ts2_ui_mode = -1;   /* 0 off, 1 placing, 2 placing and tagging sites */
+static int        g_ts2_ui_each_site = 1;   /* a batch holds one site's pieces */
 
 /* The batch: what is queued in it came from this site, with this placement. */
 static int      g_ts2_batch_place = TS2_UI_AUTO;
@@ -785,6 +818,7 @@ static int ts2_ui_parse_place(const char *s)
     if (!strncmp(s, "left", 4)) return TS2_UI_LEFT;
     if (!strncmp(s, "right", 5)) return TS2_UI_RIGHT;
     if (!strncmp(s, "side", 4)) return TS2_UI_SIDE;
+    if (!strncmp(s, "spread", 6)) return TS2_UI_SPREAD;
     return TS2_UI_AUTO;
 }
 
@@ -807,9 +841,15 @@ static int ts2_ui_mode(void)
     v = getenv("RECOMP_TS2_UI_SITES");
     if (v && *v && strcmp(v, "0") != 0)
         g_ts2_ui_mode = 2;
+    v = getenv("RECOMP_TS2_UI_EACH_SITE");
+    if (v && *v)
+        g_ts2_ui_each_site = strcmp(v, "0") != 0;
     v = getenv("RECOMP_TS2_UI_DEFAULT");
     if (v && *v)
-        g_ts2_ui_default = ts2_ui_parse_place(v);
+        g_ts2_ui_play_default = g_ts2_ui_default = ts2_ui_parse_place(v);
+    v = getenv("RECOMP_TS2_UI_PLAY");
+    if (v && *v)
+        g_ts2_ui_play_default = ts2_ui_parse_place(v);
     v = getenv("RECOMP_TS2_UI_PLACE");
     while (v && *v && g_ts2_ui_extra_count < (int)(sizeof g_ts2_ui_extra / sizeof g_ts2_ui_extra[0])) {
         char *end = NULL;
@@ -842,7 +882,13 @@ static int ts2_ui_place_for(uint32_t site)
     for (i = 0; k_ts2_ui_places[i].site; i++)
         if (k_ts2_ui_places[i].site == site)
             return k_ts2_ui_places[i].placement;
-    return g_ts2_ui_area >= 0 ? g_ts2_ui_area : g_ts2_ui_default;
+    for (i = 0; k_ts2_ui_groups[i].first; i++)
+        if (site >= k_ts2_ui_groups[i].first && site < k_ts2_ui_groups[i].last &&
+            !(k_ts2_ui_groups[i].hud && g_ts2_ui_area >= 0))
+            return k_ts2_ui_groups[i].placement;
+    if (g_ts2_ui_area >= 0)
+        return g_ts2_ui_area;
+    return g_ts2_ui_playing ? g_ts2_ui_play_default : g_ts2_ui_default;
 }
 
 /* MapMaker's editor draws its grid, the pieces on it and the hand over it
@@ -853,11 +899,18 @@ static int ts2_ui_place_for(uint32_t site)
  * and a half off at the sides (measured from the user's widescreen
  * screenshots, 31 Oct 2026). While the editor's level runs, every site
  * the table does not name is kept in proportion, so grid, pieces, hand
- * and pointer agree (src/ts2_menu_mouse.c, which calls this each frame
- * with TS2_UI_CENTRE or -1). */
+ * and pointer agree. The pause pages likewise, so a long line of text is
+ * not taken for a backdrop (src/ts2_menu_mouse.c, which calls this each
+ * frame with TS2_UI_CENTRE or -1). */
 void ts2_ui_area_default(int place)
 {
     g_ts2_ui_area = place;
+}
+
+/* Whether a level is up: unnamed sites take the play default then. */
+void ts2_ui_playing(int playing)
+{
+    g_ts2_ui_playing = playing;
 }
 
 /* Tagging mode: say once which chain a new site came through. */
@@ -897,8 +950,16 @@ static void ts2_ui_reserve(void (*reserve)(void), void (*flush)(void))
         uint32_t site = g_ts2_depth ? g_ts2_chain[0] : leaf;
         int place = ts2_ui_place_for(site);
 
+        /* Each site gets a batch of its own: the renderer's width guess
+         * (AUTO) measures a whole draw, so two small pieces at opposite
+         * sides of the screen sharing a batch read as one wide one. The
+         * Inventory page's hints, "Change item" at the left and "Select" at
+         * the right, were stretched that way, and flickered as the batch's
+         * cut moved from frame to frame; "Change page", alone on its side,
+         * was not. */
         int change = place != g_ts2_batch_place || place == TS2_UI_SIDE ||
-                     (g_ts2_ui_mode == 2 && site != g_ts2_batch_site);
+                     ((g_ts2_ui_each_site || g_ts2_ui_mode == 2) &&
+                      site != g_ts2_batch_site);
 
         if (g_ts2_ui_mode == 2)
             ts2_ui_note_site(site, leaf);
