@@ -45,6 +45,10 @@
  *                          off while the free camera or noclip is on; off:
  *                          every room drawn all the time; on: the game's
  *                          culling even with those tools
+ *   ts2_object_culling = 0  RECOMP_TS2_OBJECT_CULLING
+ *                          objects (props, doors, characters, pickups) drawn
+ *                          even when the game finds them off screen or
+ *                          behind the camera
  *
  * F1 is the only key of its own (while the game's window is in front):
  * every tool is a row of the menu.
@@ -113,6 +117,14 @@
  *     reuse one space for two rooms that are never seen together (Siberia's
  *     lowest tunnel and the room above it), and with culling off both are
  *     drawn there: why off is only the default while those tools are on.
+ *   object culling: before a room's objects are drawn, the game tests each
+ *     one's box: all its corners behind the camera, or all of them off the
+ *     part of the screen its rooms take, and it is not drawn that frame.
+ *     Nobody playing sees that, but a renderer that lights the scene from
+ *     what is off screen does: a door just out of view is gone, and the
+ *     light behind it comes in. Off, the test runs as ever, then whatever
+ *     in that room it culled is marked drawn (and clipped). An object in no
+ *     room the game knows of stays culled: it has no place on screen.
  *   HUD: the game's HUD draw (all of it: health, ammunition, the radar, the
  *     crosshair, messages) returns at once. The gun in hand stays. A HUD
  *     flash or message waiting meanwhile shows when it is back.
@@ -198,6 +210,8 @@ static struct {
     int  hud_off;                       /* the game's HUD not drawn */
     int  culling;                       /* room culling: DEV_CULL_* */
     int  culling_said;                  /* the log has said it drew every room */
+    int  objects_off;                   /* object culling off: all drawn */
+    int  objects_said;                  /* the log has said it kept some */
     int  cloaked;                       /* the tools turned the game's cloak on */
     int  item;                          /* what "Give item" gives */
     int  god_hold;                      /* frames god stays on after noclip */
@@ -1108,6 +1122,44 @@ void ts2_dev_visibility(void (*visibility)(void))
         D.culling_said = 0;
 }
 
+/* The object test, cdecl, one argument: the room whose objects it tests
+ * (its list). With object culling off, an object it marked culled (behind
+ * the camera, or off its rooms' part of the screen) is marked drawn, and
+ * clipped, since it may be partly or wholly off screen. Its rectangle is
+ * its rooms' (sub_0001D860, which the test ran), so with room culling on it
+ * is still cut to the rooms the game sees. Objects with no room found have
+ * no rectangle, and outside a room's list the draw never culls (it gives
+ * them the whole screen), so neither is touched. */
+void ts2_dev_objects(void (*test)(void))
+{
+    uint32_t room = DEV_MEM32(g_esp + 4u), list, count, i, obj, flags, r, kept = 0;
+
+    test();
+    if (!D.objects_off || !A->obj_counts || room >= TS2_OBJ_LISTS)
+        return;
+    count = DEV_MEM32(A->obj_counts + 4u * room);
+    list = DEV_MEM32(A->obj_lists + 4u * room);
+    if (!list || count > 0x10000u)
+        return;
+    for (i = 0; i < count; i++) {
+        obj = DEV_MEM32(list + 4u * i);
+        if (!obj)
+            continue;
+        flags = DEV_MEM32(obj + TS2_OBJ_FLAGS);
+        r = DEV_MEM32(obj + TS2_OBJ_ROOM);
+        if (!(flags & TS2_OBJ_CULLED) || r < 1u || r > TS2_ROOMS_MAX ||
+            (int32_t)DEV_MEM32(obj + TS2_OBJ_ROOMS) <= 0)
+            continue;
+        DEV_MEM32(obj + TS2_OBJ_FLAGS) = (flags & ~(uint32_t)TS2_OBJ_CULLED) | TS2_OBJ_CLIP;
+        kept++;
+    }
+    if (kept && !D.objects_said) {
+        D.objects_said = 1;
+        fprintf(stderr, "[TS2-DEV] object culling off: room %u drew %u of its %u objects "
+                "the game had culled\n", room, kept, count);
+    }
+}
+
 /* hud() draws the in-game HUD, and takes no arguments: hidden, it returns
  * at once, popping its return address as its own ret would. */
 void ts2_dev_hud(void (*hud)(void))
@@ -1352,7 +1404,7 @@ enum {
     ACT_READOUT, ACT_GOD, ACT_AMMO, ACT_UNLOCK, ACT_SAVE, ACT_LOAD,
     ACT_FREECAM, ACT_NOCLIP, ACT_FREEZE, ACT_STEP, ACT_INVISIBLE, ACT_WIREFRAME,
     ACT_FASTER, ACT_SLOWER, ACT_MENU, ACT_HUD, ACT_GIVE, ACT_ITEM_NEXT, ACT_ITEM_PREV,
-    ACT_CULLING, ACT_CULLING_PREV,
+    ACT_CULLING, ACT_CULLING_PREV, ACT_OBJECTS,
     ACT_COUNT
 };
 
@@ -1360,7 +1412,7 @@ static const char *const k_dev_actions[ACT_COUNT] = {
     "readout", "god", "ammo", "unlock", "save", "load",
     "freecam", "noclip", "freeze", "step", "invisible", "wireframe",
     "faster", "slower", "menu", "hud", "give", "itemnext", "itemprev",
-    "culling", "cullingprev",
+    "culling", "cullingprev", "objculling",
 };
 
 static void dev_action(int act, uint32_t p)
@@ -1489,6 +1541,12 @@ static void dev_action(int act, uint32_t p)
                 D.culling == DEV_CULL_OFF ? "room culling OFF: every room drawn" :
                 "room culling on: the game's, always");
         break;
+    case ACT_OBJECTS:
+        D.objects_off = !D.objects_off;
+        D.objects_said = 0;
+        dev_say(D.objects_off ? "object culling OFF: off-screen objects drawn" :
+                "object culling on: the game's");
+        break;
     case ACT_INVISIBLE:
         D.invisible = !D.invisible;
         dev_cloak();
@@ -1572,6 +1630,7 @@ static void dev_configure(void)
             if (!strcmp(v, k_dev_cull_names[c]))
                 D.culling = c;
     }
+    D.objects_off = !recomp_config_bool("RECOMP_TS2_OBJECT_CULLING", "ts2_object_culling", 1);
     v = recomp_config_lookup("RECOMP_TS2_GIVE_ITEM", "ts2_give_item");
     if (v && *v && A->item_count)
         D.item = (int)((unsigned)atoi(v) % A->item_count);
@@ -1581,10 +1640,10 @@ static void dev_configure(void)
         D.start_tp_pending = dev_parse_spot(v, D.start_tp, &D.start_tp_angles);
     fprintf(stderr, "[TS2-DEV] menu %s (F1 or L3+R3), god %d, "
             "infinite ammo %d, unlock all %d, invisible %d, readout %d, HUD %d, speed %gx, "
-            "room culling %s%s (src/ts2_devtools.c, docs/devtools.md)\n",
+            "room culling %s, object culling %s%s (src/ts2_devtools.c, docs/devtools.md)\n",
             D.keys ? "on" : "off (ts2_dev = 0)", D.god, D.ammo, D.unlock, D.invisible,
             D.readout, !D.hud_off, (double)k_dev_speeds[D.speed], k_dev_cull_names[D.culling],
-            D.start_tp_pending ? ", teleport at the first level" : "");
+            D.objects_off ? "off" : "on", D.start_tp_pending ? ", teleport at the first level" : "");
 }
 
 /* What the middle of the view is on: the game's own ray, from just ahead of
@@ -1695,6 +1754,7 @@ static const struct { const char *label; int act, left, right; } k_dev_menu[] = 
     { "Free camera",              ACT_FREECAM,   -1, -1 },
     { "Noclip",                   ACT_NOCLIP,    -1, -1 },
     { "Room culling",             ACT_CULLING,   ACT_CULLING_PREV, ACT_CULLING },
+    { "Object culling",           ACT_OBJECTS,   -1, -1 },
     { "Save position",            ACT_SAVE,      -1, -1 },
     { "Back to saved position",   ACT_LOAD,      -1, -1 },
     { "Wireframe",                ACT_WIREFRAME, -1, -1 },
@@ -1718,6 +1778,7 @@ static const char *dev_menu_value(int row, char *buf, size_t n)
     case ACT_NOCLIP:    on = D.noclip; break;
     case ACT_WIREFRAME: on = xbox_D3D8Wireframe(); break;
     case ACT_HUD:       on = !D.hud_off; break;
+    case ACT_OBJECTS:   on = !D.objects_off; break;
     case ACT_GIVE: {
         char name[32];
         uint32_t r = dev_record(dev_player());
@@ -1835,11 +1896,12 @@ static void dev_show(uint32_t p)
             dev_aim(line + n, sizeof line - n);
         n = strlen(line);
         if (n < sizeof line)
-            n += (size_t)snprintf(line + n, sizeof line - n, "%s%s%s%s%s%s%s%s",
+            n += (size_t)snprintf(line + n, sizeof line - n, "%s%s%s%s%s%s%s%s%s",
                                   D.god || D.noclip ? "\nGOD " : "\n",
                                   D.ammo ? "AMMO " : "", D.invisible ? "INVISIBLE " : "",
                                   D.noclip ? "NOCLIP " : "", D.freecam ? "FREECAM " : "",
                                   dev_culling_off() ? "ALLROOMS " : "",
+                                  D.objects_off ? "ALLOBJECTS " : "",
                                   D.hud_off ? "NOHUD " : "", D.frozen ? "STOPPED" : "");
     } else if (D.readout) {
         n = (size_t)snprintf(line, sizeof line, "level %u",
