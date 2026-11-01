@@ -641,6 +641,23 @@ extern void xbox_D3D8SetInterpRegisters(int projection, int affine_first, int af
 /* The debugging tools (keys, cheats, free camera): src/ts2_devtools.c. */
 #include "ts2_devtools.h"
 
+/* The soften TS2 lays over every finished frame (three passes of the frame
+ * copied back over itself a console pixel off; docs/devtools.md) is off
+ * unless a setting asks for it. It hid jagged edges on a 480-line
+ * television; at a PC's resolution it only blurs, and with it off the
+ * picture measured twice as sharp (1 Nov 2026). frame_passes = 3 (or the
+ * dev menu's "Soften (glow) passes") brings back the console's look. */
+extern void xbox_D3D8SetFramePassLimit(int n);
+
+static void ts2_soften_default(void)
+{
+    const char *v = recomp_config_lookup("RECOMP_FRAME_PASSES", "frame_passes");
+    const char *skip = getenv("RECOMP_HLE_D3D8_SKIP_FULLSCREEN");
+
+    if ((!v || !*v) && !(skip && *skip))
+        xbox_D3D8SetFramePassLimit(0);
+}
+
 static void ts2_present(void (*present)(void))
 {
     static int interp_said;
@@ -649,6 +666,7 @@ static void ts2_present(void (*present)(void))
         interp_said = 1;
         xbox_D3D8SetInterpRegisters(60, 64, 12);
         ts2_camera_widen();                /* claims the factor; see there */
+        ts2_soften_default();
     }
     present();
     ts2_dev_frame();                       /* src/ts2_devtools.c */

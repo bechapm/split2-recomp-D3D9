@@ -36,7 +36,7 @@ TS2 DEV MENU
   Save position
   Back to saved position
   Wireframe                off
-  Soften (glow) passes     < 3, as the console >
+  Soften (glow) passes     < off >
   HUD                      ON
   Give item                < Sniper Rifle >
 A/Enter set  left/right change  B/Esc close
@@ -61,7 +61,7 @@ per line, or set the environment variable beside it:
 | `ts2_give_item = 11` | `RECOMP_TS2_GIVE_ITEM` | The item "Give item" starts on (its number in the game's item list) |
 | `ts2_teleport = x,y,z[,yaw,pitch]` | `RECOMP_TS2_TELEPORT` | Where you are put once the first level is playing |
 | `ts2_room_culling = auto` | `RECOMP_TS2_ROOM_CULLING` | Room culling: `auto` (the default) is the game's own, switched off while the free camera or noclip is on; `off` draws every room all the time; `on` keeps the game's even with those tools |
-| `frame_passes = 2` | `RECOMP_FRAME_PASSES` | How many of the game's three soften passes are drawn: 0 to 3 (unset: all three). The toolkit's setting, which the menu row changes |
+| `frame_passes = 2` | `RECOMP_FRAME_PASSES` | How many of the game's three soften passes are drawn: 0 to 3 (unset: none, this port's default; 3 is the console's look). The toolkit's setting, which the menu row changes |
 | `ts2_dev_seq = FRAME:ACTION,...` | `RECOMP_TS2_DEV_SEQ` | The menu's actions at given frames (below) |
 | | `RECOMP_TS2_POSITIONS` | Where saved positions are kept (default `ts2_positions.txt` beside the executable) |
 
@@ -94,9 +94,10 @@ is being drawn.
 finished picture and lays it back over itself three times, each copy shifted
 by one console pixel and partly see-through (about 20%, 25% and under 10%).
 That softens the whole picture slightly: on a 480-line television it hid
-jagged edges and shimmer. The row draws all three (as the console does), 2, 1
-or none; A and right step down, left steps up. With fewer, the picture is
-crisper. The toolkit draws the first passes of a frame and drops
+jagged edges and shimmer. On a PC it only blurs, so **this port leaves it off**
+unless `frame_passes` asks for it (with it off the picture measured twice as
+sharp). The row draws all three (as the console does), 2, 1 or none; A and
+right step down, left steps up. The toolkit draws the first passes of a frame and drops
 the rest (`xbox_D3D8SetFramePassLimit`, see its
 `docs/technical/widescreen-and-resolution.md`), and since November 2026 it
 copies the frame for them at the resolution rendered, so leaving them on no

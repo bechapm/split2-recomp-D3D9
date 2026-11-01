@@ -48,7 +48,8 @@
  *                          culling even with those tools
  *   frame_passes = 0..3    RECOMP_FRAME_PASSES     the toolkit's: how many of
  *                          the game's three soften passes are drawn (the
- *                          menu's "Soften (glow) passes"; unset, all three)
+ *                          menu's "Soften (glow) passes"; unset, none:
+ *                          ts2_soften_default in recomp_manual.c)
  *
  * F1 is the only key of its own (while the game's window is in front):
  * every tool is a row of the menu.
