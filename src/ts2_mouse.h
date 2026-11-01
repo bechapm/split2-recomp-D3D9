@@ -146,7 +146,11 @@ void ts2_menu_picker(void (*fn)(void));
  * its table does not name, while MapMaker's editor is up; -1 for the
  * usual. */
 void ts2_ui_area_default(int place);
-void ts2_ui_playing(int playing);
+void ts2_ui_models(int on);
+
+/* The pause pages are drawing now or not: prompts name a menu's keys inside
+ * them and the level's outside. */
+void ts2_menu_pause_draw(int on);
 
 /* A lifted text function whose string is argument si (the game's measure
  * of text, sub_001AC170 in the USA release): called with the pad's A and B

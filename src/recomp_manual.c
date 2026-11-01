@@ -701,11 +701,12 @@ static void ts2_present(void (*present)(void))
  *
  *   exception  k_ts2_ui_places: this one site
  *   group      k_ts2_ui_groups: the code that draws a whole piece
- *   area       ts2_ui_area_default: all of a part of the game (pause pages,
- *              MapMaker's editor); a group marked hud gives way to it
- *   default    while a level plays, SPREAD: the piece keeps its shape and its
- *              middle stays as far across the picture as it was across 4:3.
- *              In the front end, the renderer's width guess.
+ *   area       all of a part of the UI, as a container's default for what is
+ *              inside it: while the pause pages draw (ts2_ui_area_enter),
+ *              while MapMaker's editor is up (ts2_ui_area_default). A group
+ *              marked hud gives way to it
+ *   default    k_ts2_ui_default: the release's. FILL, full-bleed: whatever
+ *              crosses the whole width spans it, the rest stays in proportion
  *
  * Why not a formula alone: a position cannot say what a piece is. The Select
  * Level panel and the ammo sit in nearly the same 4:3 spot, one to stay by
@@ -740,13 +741,13 @@ static void ts2_present(void (*present)(void))
  *   RECOMP_TS2_UI_PLACE=<list>  site=placement pairs, comma separated, over
  *                               the table: 0008A0C1=stretch,000AB123=left
  *   RECOMP_TS2_UI_DEFAULT=<p>   placement for sites not in the table (auto)
- *   RECOMP_TS2_UI_PLAY=<p>      default while a level plays (spread)
  *   RECOMP_TS2_UI_EACH_SITE=0   let sites with the same placement share a
  *                               batch, as they did before (see ts2_ui_reserve)
  */
 
 enum { TS2_UI_AUTO = 0, TS2_UI_STRETCH, TS2_UI_CENTRE, TS2_UI_LEFT, TS2_UI_RIGHT,
-       TS2_UI_SIDE, TS2_UI_EDGE, TS2_UI_SPREAD };
+       TS2_UI_SIDE, TS2_UI_EDGE, TS2_UI_SPREAD, TS2_UI_FILL };
+#define TS2_UI_PANEL_3D 0x100     /* XBOX_D3D8_2D_PANEL_3D */
 
 /* xboxrecomp src/hle/hle_d3d8_record.h: xbox_D3D8SetTwoDPlacement, recorded in
  * frame captures so a capture replays with these placements. Same values
@@ -774,12 +775,11 @@ typedef struct Ts2UiGroup { uint32_t first, last; int placement, hud; } Ts2UiGro
  * as a seam down both old borders on every screen. */
 extern const Ts2UiPlace k_ts2_ui_places[];
 extern const Ts2UiGroup k_ts2_ui_groups[];
+extern const int k_ts2_ui_default;
 
 static Ts2UiPlace g_ts2_ui_extra[64];   /* RECOMP_TS2_UI_PLACE */
 static int        g_ts2_ui_extra_count;
-static int        g_ts2_ui_default = TS2_UI_AUTO;
-static int        g_ts2_ui_play_default = TS2_UI_SPREAD;
-static volatile int g_ts2_ui_playing;   /* a level is up (ts2_ui_playing) */
+static int        g_ts2_ui_default = -1;  /* RECOMP_TS2_UI_DEFAULT, or the release's */
 /* The placement for sites not in the table while a part of the game whose
  * every piece belongs together is up, or -1 (ts2_ui_area_default). */
 static volatile int g_ts2_ui_area = -1;
@@ -794,17 +794,25 @@ static uint32_t g_ts2_batch_site;
  * one is a chunk in a frame capture). */
 static int      g_ts2_host_place = -1;
 static uint32_t g_ts2_host_tag;
+/* 3D is part of the layout now (the front end, the pause pages): a model in
+ * a menu, through a camera built for the 4:3 screen, stays with the 2D around
+ * it (XBOX_D3D8_2D_PANEL_3D). Not in a level, where the renderer cannot tell
+ * a narrow view of a split screen from a model. */
+static int      g_ts2_ui_models;
+static int      g_ts2_host_models;
 /* Set while a reservation flushes ahead of itself: the flush must not reset
  * the renderer's placement then (ts2_ui_reserve). */
 static int      g_ts2_keep_host;
 
 static void ts2_ui_host_place(int place, uint32_t tag)
 {
-    if (place == g_ts2_host_place && tag == g_ts2_host_tag)
+    if (place == g_ts2_host_place && tag == g_ts2_host_tag &&
+        g_ts2_ui_models == g_ts2_host_models)
         return;
     g_ts2_host_place = place;
     g_ts2_host_tag = tag;
-    host_SetTwoDPlacement(place, tag);
+    g_ts2_host_models = g_ts2_ui_models;
+    host_SetTwoDPlacement(place | (g_ts2_ui_models ? TS2_UI_PANEL_3D : 0), tag);
 }
 
 /* The callers of the wrapped drawing functions now running, outermost first. */
@@ -819,6 +827,7 @@ static int ts2_ui_parse_place(const char *s)
     if (!strncmp(s, "right", 5)) return TS2_UI_RIGHT;
     if (!strncmp(s, "side", 4)) return TS2_UI_SIDE;
     if (!strncmp(s, "spread", 6)) return TS2_UI_SPREAD;
+    if (!strncmp(s, "fill", 4)) return TS2_UI_FILL;
     return TS2_UI_AUTO;
 }
 
@@ -846,10 +855,7 @@ static int ts2_ui_mode(void)
         g_ts2_ui_each_site = strcmp(v, "0") != 0;
     v = getenv("RECOMP_TS2_UI_DEFAULT");
     if (v && *v)
-        g_ts2_ui_play_default = g_ts2_ui_default = ts2_ui_parse_place(v);
-    v = getenv("RECOMP_TS2_UI_PLAY");
-    if (v && *v)
-        g_ts2_ui_play_default = ts2_ui_parse_place(v);
+        g_ts2_ui_default = ts2_ui_parse_place(v);
     v = getenv("RECOMP_TS2_UI_PLACE");
     while (v && *v && g_ts2_ui_extra_count < (int)(sizeof g_ts2_ui_extra / sizeof g_ts2_ui_extra[0])) {
         char *end = NULL;
@@ -888,7 +894,7 @@ static int ts2_ui_place_for(uint32_t site)
             return k_ts2_ui_groups[i].placement;
     if (g_ts2_ui_area >= 0)
         return g_ts2_ui_area;
-    return g_ts2_ui_playing ? g_ts2_ui_play_default : g_ts2_ui_default;
+    return g_ts2_ui_default >= 0 ? g_ts2_ui_default : k_ts2_ui_default;
 }
 
 /* MapMaker's editor draws its grid, the pieces on it and the hand over it
@@ -899,18 +905,45 @@ static int ts2_ui_place_for(uint32_t site)
  * and a half off at the sides (measured from the user's widescreen
  * screenshots, 31 Oct 2026). While the editor's level runs, every site
  * the table does not name is kept in proportion, so grid, pieces, hand
- * and pointer agree. The pause pages likewise, so a long line of text is
- * not taken for a backdrop (src/ts2_menu_mouse.c, which calls this each
- * frame with TS2_UI_CENTRE or -1). */
+ * and pointer agree (src/ts2_menu_mouse.c, which calls this each frame with
+ * TS2_UI_CENTRE or -1). */
 void ts2_ui_area_default(int place)
 {
     g_ts2_ui_area = place;
 }
 
-/* Whether a level is up: unnamed sites take the play default then. */
-void ts2_ui_playing(int playing)
+/* Whether 3D is part of the layout from here on. */
+void ts2_ui_models(int on)
 {
-    g_ts2_ui_playing = playing;
+    if (ts2_ui_mode() <= 0 || on == g_ts2_ui_models)
+        return;
+    g_ts2_ui_models = on;
+    ts2_ui_host_place(g_ts2_host_place < 0 ? TS2_UI_AUTO : g_ts2_host_place, g_ts2_host_tag);
+}
+
+/* The pause pages, a container: what they draw is theirs and what the level
+ * draws around them keeps its own anchors. Set by what is drawing, not by
+ * the game being paused, or the HUD under a page as it opens and closes
+ * would change its anchors with it: the security camera's picture shrank to
+ * 4:3 behind the page, and so did the fade back to the level. */
+static int g_ts2_ui_area_kept;
+
+static int g_ts2_ui_models_kept;
+
+static void ts2_ui_area_enter(void)
+{
+    g_ts2_ui_area_kept = g_ts2_ui_area;
+    g_ts2_ui_area = TS2_UI_FILL;
+    g_ts2_ui_models_kept = g_ts2_ui_models;
+    ts2_ui_models(1);
+    ts2_menu_pause_draw(1);
+}
+
+static void ts2_ui_area_leave(void)
+{
+    g_ts2_ui_area = g_ts2_ui_area_kept;
+    ts2_ui_models(g_ts2_ui_models_kept);
+    ts2_menu_pause_draw(0);
 }
 
 /* Tagging mode: say once which chain a new site came through. */

@@ -76,19 +76,30 @@ it. A site's placement is the first of these (`ts2_ui_place_for`):
 | --- | --- | --- |
 | Exception | `k_ts2_ui_places` | One call site unlike the rest, as a full-screen fade or a page's arrow |
 | Group | `k_ts2_ui_groups` | The code that draws a whole piece, by address range: a menu panel, the radar, each hand's ammo |
-| Area | `ts2_ui_area_default` | All of a part of the game: the pause pages and MapMaker's editor keep what is not named in proportion. A group marked `hud` gives way to it, so the gauge the Inventory page borrows from the HUD stays on the page |
-| Default | `RECOMP_TS2_UI_PLAY` | While a level plays, SPREAD: a piece keeps its shape and its middle stays as far across the picture as it was across 4:3. In the front end, the renderer's width guess |
+| Area | `ts2_ui_area_enter`, `ts2_ui_area_default` | All of a container, as its default for what is inside: while the pause pages draw (the code drawing them, not the game being paused, so the level around them keeps its anchors), and MapMaker's editor. A group marked `hud` gives way to it, so the gauge the Inventory page borrows from the HUD stays on the page |
+| Default | `k_ts2_ui_default` | FILL, full-bleed: what crosses the whole width spans it, the rest stays in proportion. `RECOMP_TS2_UI_DEFAULT` for another |
 
 A formula alone cannot do it: a position does not say what a piece is. The Select
 Level panel and the ammo sit in nearly the same 4:3 spot, one to stay by the middle and
-one to go to the corner. That is also why the ammo is a group and not SPREAD, which moves
-each draw by itself and would pull the row and its number apart as the picture widens.
+one to go to the corner. SPREAD, which scales each draw's 4:3 position with the width,
+was tried as the default and cost a hand test: everything of more than one draw came
+apart by 1/k, the health bars, the turret's display, and text from its outline, which
+is five draws.
 
 Every site gets a batch of its own (`RECOMP_TS2_UI_EACH_SITE=0` puts sites with the
 same placement back in one), since the width guess measures a whole draw: two small
 hints at opposite sides in one batch read as a wide piece and were stretched, flickering
 as the batch's cut moved. Tagging flushes per site either way, so
 `RECOMP_TS2_UI_SITES=1` hides a bug of this kind: check without it too.
+
+A 3D model in a menu is part of the layout too: the character on Select Character, a
+weapon on the Inventory page, the pause pages' ribbons. Each goes through a camera
+built for the 4:3 screen, which nothing widens, so it was stretched across the picture
+and off its panel. They need no list, since the camera says what they are: one narrower
+than the picture was not made for it, where the world's is always as wide as the
+picture. While the front end or the pause pages draw (`ts2_ui_models`), such a draw
+stays at 4:3 (`XBOX_D3D8_2D_PANEL_3D`, the toolkit's widescreen doc). In a level it is
+off, since a split screen's narrow view is the world, and the world stays Hor+.
 
 The squeeze is a viewport, so a piece reaching past the 4:3 edge would stop dead
 there. The menu panels' rays do, x -243 to 910 of 640, and they fade out by themselves

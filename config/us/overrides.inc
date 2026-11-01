@@ -241,6 +241,12 @@ void sub_001ACD90(void) { ts2_ui_enter(); sub_001ACD90_gen(); ts2_ui_leave(); }
 extern void sub_001B7110_gen(void);   /* PAL 0x001B7520, -0x410 */
 void sub_001B7110(void) { ts2_ui_enter(); sub_001B7110_gen(); ts2_ui_leave(); }
 
+/* A player's pause pages, drawn over the level: the backing, the pages and
+ * the fades in and out of them (sub_000CD6D0). As a UI container, see
+ * ts2_ui_area_enter. */
+extern void sub_000334D0_gen(void);
+void sub_000334D0(void) { ts2_ui_area_enter(); sub_000334D0_gen(); ts2_ui_area_leave(); }
+
 /* The menu pointer (src/ts2_menu_mouse.c) sees the menus drawn: the three
  * text functions above (a button hint is text with a button glyph in it,
  * \x0b1 B and \x0b2 A, wherever it is drawn: under a panel by
@@ -290,6 +296,9 @@ void sub_001AD350(void) { ts2_menu_picker(sub_001AD350_gen); }
  * as src/recomp_manual.c explains. Sites are return addresses, the PAL table's
  * each moved to the USA return address of the same call. */
 
+/* What no group, area or exception names. */
+const int k_ts2_ui_default = TS2_UI_FILL;
+
 /* Whole pieces of the UI, by the code that draws them. Ends at first 0. */
 const Ts2UiGroup k_ts2_ui_groups[] = {
     /* Each menu panel, every screen's: its frame, shadow, rays, selection
@@ -311,12 +320,11 @@ const Ts2UiGroup k_ts2_ui_groups[] = {
     /* The radar. */
     { 0x000BF8F0, 0x000C0400, TS2_UI_RIGHT, 1 },
     /* Each hand's ammo at its own bottom corner, one piece of code drawing
-     * both, hence SIDE: the numbers and their backing, whole strips of
-     * rounds, the strip with rounds gone and the spent ones, the type's
-     * picture and the gauge. Anchored as a group, not spread, or the row
-     * and its number would drift apart as the picture widens. The Inventory
-     * page draws the gauge too, and there the pause pages' area holds. */
-    { 0x000BE4C0, 0x000BF440, TS2_UI_SIDE, 1 },
+     * both, hence SIDE: the rounds flying from the clip (sub_000BDE20), the
+     * numbers and their backing, whole strips of rounds, the strip with
+     * rounds gone and the spent ones, the type's picture and the gauge.
+     * The Inventory page draws the gauge too, and there the pages hold. */
+    { 0x000BDE20, 0x000BF440, TS2_UI_SIDE, 1 },
     { 0, 0, TS2_UI_AUTO, 0 }
 };
 

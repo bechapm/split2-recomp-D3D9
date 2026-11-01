@@ -265,3 +265,4 @@ const Ts2UiPlace k_ts2_ui_places[] = {
 
 /* No groups here yet: every site is in the table above. */
 const Ts2UiGroup k_ts2_ui_groups[] = { { 0, 0, TS2_UI_AUTO, 0 } };
+const int k_ts2_ui_default = TS2_UI_AUTO;
