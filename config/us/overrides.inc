@@ -247,6 +247,16 @@ void sub_001B7110(void) { ts2_ui_enter(); sub_001B7110_gen(); ts2_ui_leave(); }
 extern void sub_000334D0_gen(void);
 void sub_000334D0(void) { ts2_ui_area_enter(); sub_000334D0_gen(); ts2_ui_area_leave(); }
 
+/* A bar across the top of the HUD, label, brackets and fill, for what a level
+ * is about: "ENEMY" for the end's helicopter and "CONTAINER" at the digging
+ * site are two of its callers (string table offsets 0x1A28 and 0x2AEC), and
+ * the row of four under the helicopter's, "MISSILE LAUNCHERS". Each wrapped
+ * so one widget is one site. Part of it is a helper other screens share. */
+extern void sub_000C8F00_gen(void);
+void sub_000C8F00(void) { ts2_ui_enter(); sub_000C8F00_gen(); ts2_ui_leave(); }
+extern void sub_000C5AC0_gen(void);
+void sub_000C5AC0(void) { ts2_ui_enter(); sub_000C5AC0_gen(); ts2_ui_leave(); }
+
 /* The menu pointer (src/ts2_menu_mouse.c) sees the menus drawn: the three
  * text functions above (a button hint is text with a button glyph in it,
  * \x0b1 B and \x0b2 A, wherever it is drawn: under a panel by
@@ -315,6 +325,11 @@ const Ts2UiGroup k_ts2_ui_groups[] = {
      * level. Whatever is drawn there has to stay at its own pixels, or
      * widescreen's squeeze moves it out of the corner that is copied. */
     { 0x000E4440, 0x000E6440, TS2_UI_STRETCH, 0 },
+    /* A security camera's picture: its black frame with rounded corners, the
+     * tint and scan lines over the view. They are one piece that frames the
+     * screen, so it spans the picture; corners pinned on their own left a
+     * seam down each side, since the tint stretches and they would not. */
+    { 0x000C2180, 0x000C2A1B, TS2_UI_STRETCH, 0 },
     /* The HUD's corners. The rank badge. */
     { 0x000BCE20, 0x000BD110, TS2_UI_LEFT, 1 },
     /* The radar. */
@@ -380,6 +395,15 @@ const Ts2UiPlace k_ts2_ui_places[] = {
      * squeezing them would pull them off it. */
     { 0x001BFE0F, TS2_UI_STRETCH }, { 0x001BE7AE, TS2_UI_STRETCH },
     { 0x001BE7E4, TS2_UI_STRETCH }, { 0x001BE947, TS2_UI_STRETCH },
+    /* What a security camera's frame holds: the camera's name, "rec" and its
+     * light at the right, the prompts at the left, under the frame's corners. */
+    { 0x000C24BD, TS2_UI_RIGHT },  { 0x000C2564, TS2_UI_RIGHT },
+    { 0x000C26F0, TS2_UI_RIGHT },  { 0x000C2739, TS2_UI_RIGHT },
+    { 0x000C28EF, TS2_UI_LEFT },   { 0x000C2951, TS2_UI_LEFT },
+    { 0x000C2A0D, TS2_UI_LEFT },
+    /* The bars across the top, top right in 4:3 (sub_000C8F00, sub_000C5AC0). */
+    { 0x000C9AD8, TS2_UI_RIGHT },  { 0x000C9B61, TS2_UI_RIGHT },
+    { 0x000C9C14, TS2_UI_RIGHT },  { 0x000C9CB6, TS2_UI_RIGHT },
     /* Pause menu (in-game Start): the ring of health and armour arcs
      * (sub_000D1DD0, every page, through the same arc helper as the HUD's
      * 000C92DF) and the dark cap across its top, which span the picture

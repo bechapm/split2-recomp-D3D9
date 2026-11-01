@@ -92,6 +92,13 @@ hints at opposite sides in one batch read as a wide piece and were stretched, fl
 as the batch's cut moved. Tagging flushes per site either way, so
 `RECOMP_TS2_UI_SITES=1` hides a bug of this kind: check without it too.
 
+What a whole widget draws should be one site: wrapping the function that draws it does
+that (`sub_000C8F00`, the bars across the top of the HUD, part of which is a helper other
+screens share). A security camera's frame is a group that spans the picture, with its
+text anchored. Pinning its corners as a nine-slice leaves a seam down each side, since
+the tint and scan lines are one piece that stretches and the corners would not, so its
+corners are a little wider than they were.
+
 A 3D model in a menu is part of the layout too: the character on Select Character, a
 weapon on the Inventory page, the pause pages' ribbons. Each goes through a camera
 built for the 4:3 screen, which nothing widens, so it was stretched across the picture
