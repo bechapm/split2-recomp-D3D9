@@ -1612,6 +1612,10 @@ static void dev_configure(void)
     v = recomp_config_lookup("RECOMP_TS2_GIVE_ITEM", "ts2_give_item");
     if (v && *v && A->item_count)
         D.item = (int)((unsigned)atoi(v) % A->item_count);
+    /* frame_passes = 3 means the game's three, as the menu's "3" does: no
+     * limit, since some frames (around Siberia's opening) draw more. */
+    if (xbox_D3D8FramePassLimit() >= TS2_SOFTEN_PASSES)
+        xbox_D3D8SetFramePassLimit(-1);
     dev_seq_parse(recomp_config_lookup("RECOMP_TS2_DEV_SEQ", "ts2_dev_seq"));
     v = recomp_config_lookup("RECOMP_TS2_TELEPORT", "ts2_teleport");
     if (v && *v)
