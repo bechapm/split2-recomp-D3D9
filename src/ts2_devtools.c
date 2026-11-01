@@ -100,7 +100,7 @@
  *   free camera: the eye and direction the camera update hands its
  *     look-at, replaced at that one call, and the room drawing starts from
  *     found by the portal walk, so the view, everything made from it and
- *     the camera RTX Remix is given all follow, and rooms are drawn from
+ *     what graphics tools are given all follow, and rooms are drawn from
  *     where the camera is. The visibility pass judges each portal from the
  *     context's own eye, which the look-at's copy leaves at the player's
  *     head; the camera's is put there for that pass, or rooms vanished the

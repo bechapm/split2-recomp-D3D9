@@ -32,15 +32,6 @@ void sub_00032D90(void) { ts2_camera_setup(sub_00032D90_gen); }
 extern void sub_0009F180_gen(void);
 void sub_0009F180(void) { ts2_front_end_scene(sub_0009F180_gen); }
 
-/* draw_world is sub_001A5040: it reads the render context from the global
- * at 0x004B2F60, passes the matrix pointer at context+0x208 to sub_001B6AB0
- * (the model-view, c64-c67), then walks the level's mesh lists and draws
- * them. Checked at run time: in Siberia, turning and walking, every one of
- * 40 samples of the world draws' c64-c66 was that matrix transposed. Not
- * yet found in the PAL release. */
-extern void sub_001A5040_gen(void);
-void sub_001A5040(void) { ts2_draw_world(sub_001A5040_gen, 0x004B2F60u); }
-
 /* sweep is sub_00121710(index, from, to, height, radius, out, 1, 0): it
  * moves a character from `from` towards `to` and corrects `to` in place to
  * where it may go. Every one of the player's movement modes (the handlers
