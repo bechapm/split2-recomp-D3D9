@@ -257,6 +257,13 @@ void sub_000C8F00(void) { ts2_ui_enter(); sub_000C8F00_gen(); ts2_ui_leave(); }
 extern void sub_000C5AC0_gen(void);
 void sub_000C5AC0(void) { ts2_ui_enter(); sub_000C5AC0_gen(); ts2_ui_leave(); }
 
+/* A rectangle of random tiles of a texture, row by row: the static over the
+ * whole screen, from sub_000CB930 while its strength (+0x7C) is not 0, and
+ * from sub_000EE9E0. Wrapped so the callers are the sites, which are named
+ * below: inside the second one's code it would fall to the panels' group. */
+extern void sub_000CA0B0_gen(void);
+void sub_000CA0B0(void) { ts2_ui_enter(); sub_000CA0B0_gen(); ts2_ui_leave(); }
+
 /* MapMaker's editor at the picture's width (src/ts2_mapmaker_view.c says
  * why): the view widened while the editor updates and draws, the screen
  * rectangle while its grid draws, and the zoom's limits with them. The
@@ -399,6 +406,11 @@ const Ts2UiPlace k_ts2_ui_places[] = {
     { 0x00022635, TS2_UI_STRETCH }, { 0x00022650, TS2_UI_STRETCH },
     { 0x0002266B, TS2_UI_STRETCH }, { 0x0002268A, TS2_UI_STRETCH },
     { 0x000C9FCA, TS2_UI_STRETCH }, { 0x000CA261, TS2_UI_STRETCH },
+    /* The static, 80 tiles over the whole screen. Left to FILL's width test it
+     * is measured draw by draw, so any part of it short of a row would read
+     * as narrow and sit in the 4:3 box for that frame: the dark flash at the
+     * old edges over a security camera's picture. */
+    { 0x000CBB15, TS2_UI_STRETCH }, { 0x000EEAB3, TS2_UI_STRETCH },
     { 0x000CA4CA, TS2_UI_STRETCH },
     /* Backdrop: the tunnel ring, the title screen's nebula, the footer. */
     { 0x00088783, TS2_UI_STRETCH }, { 0x000B8559, TS2_UI_STRETCH },

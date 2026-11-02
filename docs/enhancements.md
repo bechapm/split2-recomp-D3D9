@@ -77,7 +77,7 @@ it. A site's placement is the first of these (`ts2_ui_place_for`):
 | Exception | `k_ts2_ui_places` | One call site unlike the rest, as a full-screen fade or a page's arrow |
 | Group | `k_ts2_ui_groups` | The code that draws a whole piece, by address range: a menu panel, the radar, each hand's ammo |
 | Area | `ts2_ui_area_enter`, `ts2_mm_area_enter` | All of a container, as its default for what is inside: while the pause pages draw (the code drawing them, not the game being paused, so the level around them keeps its anchors), and the parts of MapMaker's editor. A group marked `hud` gives way to it, so the gauge the Inventory page borrows from the HUD stays on the page |
-| Default | `k_ts2_ui_default` | FILL, full-bleed: what crosses the whole width spans it, the rest stays in proportion. `RECOMP_TS2_UI_DEFAULT` for another |
+| Default | `k_ts2_ui_default` | FILL, full-bleed: what crosses the whole width spans it, a piece flush with the screen's edge keeps that edge at the picture's (a scope's mask, the rim of its filter), and the rest stays in proportion. `RECOMP_TS2_UI_DEFAULT` for another |
 
 A formula alone cannot do it: a position does not say what a piece is. The Select
 Level panel and the ammo sit in nearly the same 4:3 spot, one to stay by the middle and
@@ -107,6 +107,14 @@ than the picture was not made for it, where the world's is always as wide as the
 picture. While the front end or the pause pages draw (`ts2_ui_models`), such a draw
 stays at 4:3 (`XBOX_D3D8_2D_PANEL_3D`, the toolkit's widescreen doc). In a level it is
 off, since a split screen's narrow view is the world, and the world stays Hor+.
+Through a viewport of the whole screen it is held by the projection, not the viewport,
+so the pause pages' tentacles keep their shape and still reach the picture's edges.
+
+A scope is pieces flush with the screen's edge: the vintage rifle's side bars either
+side of its mask, x 20 to 620 and so an ellipse in the game too, and the rim of the
+sniper's filter, a nine-slice around the box at 141 to 499. FILL takes each one's outer
+edge to the picture's and leaves the rest in proportion. The static over a security
+camera's picture is named, not left to FILL's width test.
 
 The squeeze is a viewport, so a piece reaching past the 4:3 edge would stop dead
 there. The menu panels' rays do, x -243 to 910 of 640, and they fade out by themselves
