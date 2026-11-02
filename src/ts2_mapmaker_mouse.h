@@ -31,6 +31,14 @@ typedef struct Ts2MapMakerAddrs {
     /* The Load and Save screens' lists: a screen's class, and how far its
      * bar over a row runs, which is wider than the row's text. */
     struct { uint32_t screen_class; int left, right; } lists[2];
+    /* The editor's view (src/ts2_mapmaker_view.c), dwords: its rectangle's
+     * left and width in pixels, and its span, left and right on the map. */
+    struct { uint32_t x, w, span, left, right; } view;
+    /* Dword: the screen rectangle now, whose first two dwords are its left
+     * and right, as the game's box draw clips to them. */
+    uint32_t screen;
+    /* Return addresses of the four helper calls with the zoom's limits. */
+    uint32_t zoom_limits[4];
 } Ts2MapMakerAddrs;
 
 /* In the menu state F (src/ts2_menu_mouse.h, TS2_MF_*). */
@@ -74,5 +82,21 @@ int  ts2_mapmaker_pick_row_at(uint32_t top, float y);
 
 /* From the bindings filter, for controller 1. */
 void ts2_mapmaker_filter(XBOX_GAMEPAD *pad);
+
+/* The release's table. */
+const Ts2MapMakerAddrs *ts2_mapmaker_addrs(void);
+
+/* src/ts2_mapmaker_view.c: the view widened, around the editor's update and
+ * draw; the screen rectangle widened, around the grid's draw; the zoom's
+ * limits, at the entry of the helper they pass through, arg being where it
+ * has them above esp. */
+void ts2_mm_view_enter(void);
+void ts2_mm_view_leave(void);
+void ts2_mm_screen_enter(void);
+void ts2_mm_screen_leave(void);
+void ts2_mm_zoom_limit(int arg);
+
+/* How far the editor's view reaches on the picture, in menu pixels. */
+void ts2_mapmaker_view_span(float *left, float *right);
 
 #endif

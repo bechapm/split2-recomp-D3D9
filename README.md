@@ -70,9 +70,12 @@ the shortcut `icon.png` from the release folder as its icon.
 - The front end, story mode and System Link deathmatch have been played.
   Challenge and MapMaker have had little testing.
 - 60 fps, paced the way the console paced it.
-- Widescreen. The camera is widened rather than stretched, and the menus and
-  HUD are laid out for 16:9.
-- Rendering at up to 8x the console's 640x480.
+- Widescreen at any shape: 16:9, 16:10, 21:9 and 32:9 ultrawide, or your
+  screen's own. The camera is widened rather than stretched, and the menus and
+  HUD are laid out for the wider picture. The game was made for 4:3, so an
+  ultrawide picture can show things it never meant to be seen, in cutscenes
+  most.
+- Rendering at any common resolution, 480p to 8K, or your screen's own.
 - Frame interpolation: 120 or more frames a second on screen while the game
   itself runs at 60.
 - Fullscreen and variable refresh rate (G-SYNC, FreeSync).
@@ -158,8 +161,8 @@ In the launcher's Video tab:
 
 | Setting | What it does |
 | --- | --- |
-| Resolution | Renders at 1 to 8 times 640x480 and filters down. 2 is much sharper and costs little |
-| Widescreen | 16:9, with the wider camera and menus |
+| Resolution | How many lines the game is drawn with: 480p (the console's), 720p, 1080p, 1440p, 4K, 2880p, 4320p, or Match my screen. The width follows the aspect ratio, and the picture is filtered to the window. Above your screen's height it is supersampled: sharper still, and costs more |
+| Aspect ratio | 4:3 (the console's), 16:9, 16:10, 21:9 ultrawide, 32:9 super ultrawide, or Match my screen. Anything wider than 4:3 widens the camera and lays the menus out for the wider picture |
 | Texture sharpness | Anisotropic filtering, 1 to 16 |
 | Frame rate | Adaptive (the default), 60, 30, or uncapped |
 | Show frame rate | Start with the counter on |
@@ -170,7 +173,7 @@ In the launcher's Video tab:
 The game runs its logic once a frame, so an uncapped frame rate makes it run
 fast. Use frame interpolation for smoother motion instead.
 
-To keep the front end at 4:3 between bars while the levels are 16:9, add
+To keep the front end at 4:3 between bars while the levels are widescreen, add
 `ts2_menus = 43` to the settings file (see [Where things are
 kept](#where-things-are-kept)).
 
@@ -363,8 +366,8 @@ file:
 
 | Setting | File | Environment |
 | --- | --- | --- |
-| Resolution | `resolution_scale` | `RECOMP_RES_SCALE` |
-| Widescreen | `widescreen` | `RECOMP_WIDESCREEN` |
+| Resolution | `resolution` (lines, or `screen`; without it `resolution_scale`, 1 to 8 times 480) | `RECOMP_RESOLUTION`, `RECOMP_RES_SCALE` |
+| Aspect ratio | `widescreen` (off is 4:3) and `aspect_ratio` (`16:9`, `21:9`, `32:9`, any `W:H`, or `screen`) | `RECOMP_WIDESCREEN`, `RECOMP_ASPECT` |
 | Texture sharpness | `anisotropy` | `RECOMP_ANISO` |
 | Frame rate | `frame_cap` (0 for uncapped) | `RECOMP_FPS_CAP` |
 | Show frame rate | `fps_overlay` | `RECOMP_FPS_OVERLAY` |

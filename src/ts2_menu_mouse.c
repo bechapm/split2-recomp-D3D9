@@ -200,6 +200,7 @@ static struct {
     /* The D-pad's picture being drawn (ts2_menu_dpad): its corner and the
      * ways it offers (up, down, left, right). */
     int      mapmaker_ui;    /* MapMaker's placement was asked for */
+    int      pause_draw;     /* the pause pages are drawing */
     int      dpad_on;
     float    dpad_x, dpad_y;
     int      dpad_way[4];
@@ -725,7 +726,7 @@ static void n_dpad_box(int k, float *x0, float *y0, float *x1, float *y1)
     *y1 = *y0 + 16.0f;
 }
 
-void ts2_menu_sprite(void)
+void ts2_menu_sprite(int place)
 {
     uint32_t a = g_esp, ret;
     float x0, y0, x1, y1;
@@ -758,14 +759,14 @@ void ts2_menu_sprite(void)
     }
     if (!A->page_draw || ret < A->page_draw || ret >= A->page_draw_end)
         return;
-    n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, x0 + x1 < TS2_MENU_W ? -1 : 1, 0, x0, y0, x1, y1);
-    if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 6.0f))
+    n_drawn_add(DR_PAGE, place, x0 + x1 < TS2_MENU_W ? -1 : 1, 0, x0, y0, x1, y1);
+    if (n_under(place, x0, y0, x1, y1, 6.0f))
         N_MEM32(a + 0x24) = n_lit(N_MEM32(a + 0x24));
 }
 
 /* A sprite by id, (float x, float y, id, colour), sized by its texture:
  * MapMaker's tab arrows, the D-pad's left and right as a pause page's. */
-void ts2_menu_sprite_id(void)
+void ts2_menu_sprite_id(int place)
 {
     uint32_t a = g_esp, ret, rec;
     float x0, y0, x1, y1;
@@ -795,8 +796,11 @@ void ts2_menu_sprite_id(void)
     y0 = N_MEMF(a + 8);
     x1 = x0 + (float)N_MEM16(rec + 0x26);
     y1 = y0 + (float)N_MEM16(rec + 0x2A);
-    n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, ret == A->tab_left ? -1 : 1, 0, x0, y0, x1, y1);
-    if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 4.0f))
+    /* MapMaker's tabs go to the left in its editor, and are found there. */
+    if (place != TS2_PLACE_LEFT && place != TS2_PLACE_RIGHT)
+        place = TS2_PLACE_AUTO;
+    n_drawn_add(DR_PAGE, place, ret == A->tab_left ? -1 : 1, 0, x0, y0, x1, y1);
+    if (n_under(place, x0, y0, x1, y1, 4.0f))
         N_MEM32(a + 16) = n_lit(N_MEM32(a + 16));
 }
 
@@ -811,10 +815,26 @@ void ts2_menu_sprite_id(void)
  * it (recomp_input_using_keys), each text call and the game's own measure
  * of text (sub_001AC170, so its hint bar lays the line out at the new
  * width) get a copy of the line with those two written as the keys that
- * do the same in a menu: Enter for A, Esc for B. The other digits, and
- * text in a level outside the pause menu, keep the pad's pictures. */
+ * do the same in a menu: Enter for A, Esc for B. A prompt a level draws (the
+ * security camera's) names the keys that do it there, the first bound to
+ * each button. Which is by what is drawing the line, not by what is up: the
+ * camera's prompts behind a pause page flashed to the menu's keys as it
+ * opened. Digits with no key keep the pad's pictures. */
 #define KEY_TEXT_LEN  256
 #define KEY_TEXT_RING 6
+
+/* Whether the line being drawn is the level's, not a menu's: in a level,
+ * outside the pause pages and MapMaker's editor. */
+static int n_level_draws(void)
+{
+    return A->level_id && N_MEM32(A->level_id) < A->level_menus && !N.pause_draw &&
+           !N.mapmaker_ui;
+}
+
+void ts2_menu_pause_draw(int on)
+{
+    N.pause_draw = on;
+}
 
 /* The key named for the button the game writes as \x0b and digit d: B is
  * Esc and A is Enter in a menu (the conventions: Windows pairs Escape with
@@ -822,7 +842,7 @@ void ts2_menu_sprite_id(void)
  * NULL to keep the pad's picture. */
 static const char *n_key_name(int d)
 {
-    static char y[24], x[24];
+    static char y[24], x[24], a[24], b[24];
     static int read;
     char k[16];
 
@@ -832,6 +852,16 @@ static const char *n_key_name(int d)
             snprintf(y, sizeof y, "[%s]", k);
         if (recomp_bindings_key_name(0, "x", k, sizeof k))
             snprintf(x, sizeof x, "[%s]", k);
+        if (recomp_bindings_key_name(0, "a", k, sizeof k))
+            snprintf(a, sizeof a, "[%s]", k);
+        if (recomp_bindings_key_name(0, "b", k, sizeof k))
+            snprintf(b, sizeof b, "[%s]", k);
+    }
+    if (n_level_draws()) {
+        if (d == 1)
+            return b[0] ? b : NULL;
+        if (d == 2)
+            return a[0] ? a : NULL;
     }
     switch (d) {
     case 1:
@@ -867,7 +897,8 @@ static uint32_t n_key_text(uint32_t str)
     uint32_t k, o = 0, buf;
     int any = 0;
 
-    if (N.no_keys || !N.want || !recomp_input_using_keys() || !n_ptr_ok(str))
+    if (N.no_keys || (!N.want && !n_level_draws()) || !recomp_input_using_keys() ||
+        !n_ptr_ok(str))
         return 0;
     for (k = 0; k < 0x7F && N_MEM8(str + k); k++)
         if (N_MEM8(str + k) == 0x0B && n_key_name(N_MEM8(str + k + 1u) - '0'))
@@ -1313,7 +1344,7 @@ static void n_menu_text(void (*draw)(void), int form, int place)
     float x, y, h;
 
     if (!N.want || !A->frontend || !A->text_width) {
-        draw();
+        n_key_call(draw, si);
         return;
     }
     str = N_MEM32(a + 4u * (uint32_t)si);
@@ -1948,12 +1979,10 @@ void ts2_menu_frame(void)
 
     in_level = N_MEM32(A->level_id) < A->level_menus;
     mapmaker = ts2_mapmaker_active();
-    /* MapMaker's editor in widescreen: everything in proportion, so the
-     * grid, the hand and the pointer agree (src/recomp_manual.c). */
-    if (mapmaker != N.mapmaker_ui) {
-        N.mapmaker_ui = mapmaker;
-        ts2_ui_area_default(mapmaker ? TS2_PLACE_CENTRE : -1);
-    }
+    N.mapmaker_ui = mapmaker;
+    /* A model in a menu stays with the 2D around it; a level's views are its
+     * own, and the pause pages say so as they draw (src/recomp_manual.c). */
+    ts2_ui_models(!in_level);
     s = n_menu();
     /* In the front end the pointer stays through the gaps between screens
      * and on the screens with nothing to select, and in a level it stays
