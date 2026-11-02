@@ -113,6 +113,12 @@ typedef struct Ts2DevAddrs {
      * the game draws into, a pointer (ints: +0 left, +4 right, +0x14 top,
      * +0x18 bottom). */
     uint32_t rooms, room_count, portals, viewport;
+    /* Each room's objects (object culling): a count per room at obj_counts
+     * + room * 4 and a pointer to that many object pointers at obj_lists +
+     * room * 4, the lists the room draw walks (sub_0014E6F0). Before it, the
+     * object test (sub_0014E0F0, wrapped) marks each object of a room culled
+     * when its box is behind the camera or off its rooms' part of the screen. */
+    uint32_t obj_counts, obj_lists;
 } Ts2DevAddrs;
 
 /* The player record (P), the character object (C = [P + chr]) and the
@@ -154,6 +160,15 @@ enum {
     TS2_ROOM_PORTALS = 0x004, /* a room: its portal list */
     TS2_ROOMS_MAX   = 200,    /* the room tables' size */
     TS2_SEEN_DEPTH_MAX = 0x4F,/* the draw sorts rooms into 80 depths */
+    /* An object in a room's list (code: sub_0014E0F0, sub_0014E6F0,
+     * sub_0001D860): the room it is listed in, flags, how many rooms it
+     * touches (0: none found, so no rectangle and never drawn). */
+    TS2_OBJ_ROOM    = 0x014,
+    TS2_OBJ_FLAGS   = 0x01C,
+    TS2_OBJ_ROOMS   = 0x0F4,
+    TS2_OBJ_CULLED  = 0x800000, /* in TS2_OBJ_FLAGS: not drawn this frame */
+    TS2_OBJ_CLIP    = 0x400000, /* in TS2_OBJ_FLAGS: drawn with clipping */
+    TS2_OBJ_LISTS   = 224,      /* rooms' lists, and a few of the game's own */
 };
 
 /* Once a frame, after the game's present: keys, switches, the readout. */
@@ -184,6 +199,11 @@ void ts2_dev_look_at(void (*look_at)(void));
  * the player's, and with room culling off (by default while the free camera
  * or noclip is on) every room is drawn. */
 void ts2_dev_visibility(void (*visibility)(void));
+
+/* The object test (wraps the release's per-room object test, cdecl, the
+ * room's list as its one argument): with object culling off, an object it
+ * marked culled as off screen or behind the camera is drawn anyway. */
+void ts2_dev_objects(void (*test)(void));
 
 /* The in-game HUD (wraps the release's HUD draw, which takes no arguments
  * and draws all of it: health and armour, ammo, the radar, the crosshair,
