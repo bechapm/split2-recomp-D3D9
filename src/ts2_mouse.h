@@ -114,12 +114,13 @@ enum { TS2_ARROW_RIGHT = 0, TS2_ARROW_LEFT, TS2_ARROW_UP, TS2_ARROW_DOWN };
 void ts2_menu_arrow(int dir);
 
 /* Any sprite (x0, y0, x1, y1, u0, v0, u1, v1, colour), before its body runs:
- * the pause menu's page arrows are drawn as these. */
-void ts2_menu_sprite(void);
+ * the pause menu's page arrows are drawn as these. place as ts2_menu_text's. */
+void ts2_menu_sprite(int place);
 
 /* A sprite by id (float x, float y, id, colour), before its body runs:
- * MapMaker's tab arrows are drawn as these (sub_000AA5B0). */
-void ts2_menu_sprite_id(void);
+ * MapMaker's tab arrows are drawn as these (sub_000AA5B0). place as
+ * ts2_menu_text's. */
+void ts2_menu_sprite_id(int place);
 
 /* A button's picture (x0, y0, x1, y1, icon, alpha): icon 0 B, 1 A, 2 Y,
  * 3 X, as the pause pages draw their prompts (sub_000AA360 in the USA
@@ -146,10 +147,12 @@ void ts2_menu_picker(void (*fn)(void));
  * picked, where the gallery's update looks for a change. */
 void ts2_menu_pad_read(void (*fn)(void));
 
-/* src/recomp_manual.c: the widescreen placement (TS2_UI_*) for every site
- * its table does not name, while MapMaker's editor is up; -1 for the
- * usual. */
-void ts2_ui_area_default(int place);
+/* src/recomp_manual.c: whether a model is part of the 2D's layout. */
+void ts2_ui_models(int on);
+
+/* The pause pages are drawing now or not: prompts name a menu's keys inside
+ * them and the level's outside. */
+void ts2_menu_pause_draw(int on);
 
 /* A lifted text function whose string is argument si (the game's measure
  * of text, sub_001AC170 in the USA release): called with the pad's A and B

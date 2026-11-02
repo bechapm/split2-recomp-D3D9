@@ -12,8 +12,8 @@ Estimates are working time; calendar time will be longer. They date from
 
 | Enhancement | Where | Notes |
 | --- | --- | --- |
-| Widescreen (16:9) | Both | Camera widened where the game builds it, so culling agrees; front end, HUD and every other screen laid out for 16:9 by call site. `RECOMP_TS2_MENUS=43` brings back the 4:3 front end. |
-| Internal resolution | Toolkit | `RECOMP_RES_SCALE=1..8` |
+| Widescreen (any shape) | Both | `aspect_ratio` (launcher row Aspect ratio): 16:9, 16:10, 21:9, 32:9 or the screen's. Camera widened where the game builds it by the toolkit's (4/3)/aspect, so culling agrees; front end, HUD and every other screen laid out by call site, with edge pieces pinned to the picture's edges. CMakeLists.txt declares `recomp_title_widescreen(HOR_PLUS REGISTER 60)` so the launcher offers every shape. `RECOMP_TS2_MENUS=43` brings back the 4:3 front end. |
+| Internal resolution | Toolkit | `resolution` = lines (480 to 8640, or `screen`), the width following the shape; `RECOMP_RES_SCALE=1..8` still works |
 | Vulkan renderer | Toolkit | The renderer on macOS. On Windows `RECOMP_D3D8_BACKEND=vulkan`, which needs `third_party/dxc` (the DXC GitHub release) for the build |
 | Launcher mouse input | Toolkit | Arrow hit boxes match what is drawn (xboxrecomp #24) |
 | Variable refresh rate | Toolkit | Borderless fullscreen (Alt+Enter), VRR presents on both renderers; launcher rows Fullscreen and Variable refresh rate (xboxrecomp #29) |
@@ -46,7 +46,80 @@ Estimates are working time; calendar time will be longer. They date from
 How to survey a screen: F11 with `RECOMP_TS2_UI_SITES=1` set, then
 `d3d8_replay --each-tag` / `--each-tag-hidden` on the capture and
 `--place <site>=<placement>` to try a placement before it goes into
-`src/recomp_manual.c`.
+`config/<region>/overrides.inc`.
+
+### How the 2D is laid out: anchors
+
+This is the anchor model of any modern UI, retrofitted. An engine's widget says what
+it is anchored to, and a web page's box has a flex or grid parent; the layout then
+works out the position from the screen's shape. This game's code only says x = 520,
+because it knew its screen, so the anchors are written down in
+`config/<region>/overrides.inc`. Every position is still calculated, by one factor,
+k = (4/3)/aspect, so every shape uses the same data and nothing is kept per
+resolution.
+
+```
+ what the game drew, 640 wide     where it goes, any shape
+ +-----------------+    +------------------------------------------------+
+ | rank     radar  |    | rank                                     radar |
+ |      panel      |    |                     panel                      |
+ | ammo      ammo  |    | ammo                                      ammo |
+ +-----------------+    +------------------------------------------------+
+                         LEFT            CENTRE, SPREAD             RIGHT
+                         <---------------- STRETCH ---------------------->
+```
+
+The anchor goes on the largest thing that moves together, and what is inside inherits
+it. A site's placement is the first of these (`ts2_ui_place_for`):
+
+| Level | Where | What it is for |
+| --- | --- | --- |
+| Exception | `k_ts2_ui_places` | One call site unlike the rest, as a full-screen fade or a page's arrow |
+| Group | `k_ts2_ui_groups` | The code that draws a whole piece, by address range: a menu panel, the radar, each hand's ammo |
+| Area | `ts2_ui_area_enter`, `ts2_mm_area_enter` | All of a container, as its default for what is inside: while the pause pages draw (the code drawing them, not the game being paused, so the level around them keeps its anchors), and the parts of MapMaker's editor. A group marked `hud` gives way to it, so the gauge the Inventory page borrows from the HUD stays on the page |
+| Default | `k_ts2_ui_default` | FILL, full-bleed: what crosses the whole width spans it, a piece flush with the screen's edge keeps that edge at the picture's (a scope's mask, the rim of its filter), and the rest stays in proportion. `RECOMP_TS2_UI_DEFAULT` for another |
+
+A formula alone cannot do it: a position does not say what a piece is. The Select
+Level panel and the ammo sit in nearly the same 4:3 spot, one to stay by the middle and
+one to go to the corner. SPREAD, which scales each draw's 4:3 position with the width,
+was tried as the default and cost a hand test: everything of more than one draw came
+apart by 1/k, the health bars, the turret's display, and text from its outline, which
+is five draws.
+
+Every site gets a batch of its own (`RECOMP_TS2_UI_EACH_SITE=0` puts sites with the
+same placement back in one), since the width guess measures a whole draw: two small
+hints at opposite sides in one batch read as a wide piece and were stretched, flickering
+as the batch's cut moved. Tagging flushes per site either way, so
+`RECOMP_TS2_UI_SITES=1` hides a bug of this kind: check without it too.
+
+What a whole widget draws should be one site: wrapping the function that draws it does
+that (`sub_000C8F00`, the bars across the top of the HUD, part of which is a helper other
+screens share). A security camera's frame is a group that spans the picture, with its
+text anchored. Pinning its corners as a nine-slice leaves a seam down each side, since
+the tint and scan lines are one piece that stretches and the corners would not, so its
+corners are a little wider than they were.
+
+A 3D model in a menu is part of the layout too: the character on Select Character, a
+weapon on the Inventory page, the pause pages' ribbons. Each goes through a camera
+built for the 4:3 screen, which nothing widens, so it was stretched across the picture
+and off its panel. They need no list, since the camera says what they are: one narrower
+than the picture was not made for it, where the world's is always as wide as the
+picture. While the front end or the pause pages draw (`ts2_ui_models`), such a draw
+stays at 4:3 (`XBOX_D3D8_2D_PANEL_3D`, the toolkit's widescreen doc). In a level it is
+off, since a split screen's narrow view is the world, and the world stays Hor+.
+Through a viewport of the whole screen it is held by the projection, not the viewport,
+so the pause pages' tentacles keep their shape and still reach the picture's edges.
+
+A scope is pieces flush with the screen's edge: the vintage rifle's side bars either
+side of its mask, x 20 to 620 and so an ellipse in the game too, and the rim of the
+sniper's filter, a nine-slice around the box at 141 to 499. FILL takes each one's outer
+edge to the picture's and leaves the rest in proportion. The static over a security
+camera's picture is named, not left to FILL's width test.
+
+The squeeze is a viewport, so a piece reaching past the 4:3 edge would stop dead
+there. The menu panels' rays do, x -243 to 910 of 640, and they fade out by themselves
+further on, so the game turns on the toolkit's overflow
+(`xbox_D3D8SetTwoDOverflow`, `xboxrecomp/docs/technical/widescreen-and-resolution.md` 9).
 
 ## Candidates
 
@@ -126,10 +199,8 @@ it is on (or of the arrow), laid out as `sub_000F1230` draws it; a click on a
 button hint is its button, laid out as `sub_000EFEB0` draws them; a click on a
 pause page's arrow (`sub_000D1A00`) is the D-pad's left or right. The hints and
 values are measured with the game's own text width (`sub_001AC170`), called
-from the present. In widescreen the arrows have no place of their own in
-`k_ts2_ui_places`, so the width guess moves them: one arrow alone goes in the
-middle 4:3, two together are stretched, and a click is taken at either spot.
-Fixing that takes a wrap of `sub_000D1A00` and a relift. A click skips a
+from the present. In widescreen the arrows are pinned to the picture's edges,
+outside the ring, and the pointer follows their placement. A click skips a
 cutscene: in the front end with no screen up, and in a level while the camera
 is not the player's eye and the player is not on a mounted gun
 (`src/ts2_mouse.c`), as the button `RECOMP_TS2_SKIP_BUTTON` names. A, the
@@ -156,10 +227,15 @@ moves, the left button is A while held (place, lasso), the right button B
 (delete), the wheel the triggers (zoom), and the pointer past the hand's
 limits pushes the left stick (the game's own scrolling). Its screens are the
 same hand over hot spots (`S+0x64C`, count `S+0x650`, the id under the hand
-in `S+0x648`) or rows the pointer picks by writing that id. In widescreen
-every site the placement table does not name is kept in proportion while
-the editor runs (`ts2_ui_area_default`), since the grid was stretched and
-the hand was not. Map Settings' and Editor Settings' value arrows (sprites
+in `S+0x648`) or rows the pointer picks by writing that id. **In widescreen
+the editor shows more of the map (`src/ts2_mapmaker_view.c`):** at the same
+scale, so cells stay square and their size at any shape, and the hand and the
+edge scrolling reach the wider picture's edges. Its view is widened only while
+it updates and draws, since its other screens lay themselves out from the same
+rectangle; maps are unchanged, as nothing that saves one reads the view. The
+grid is a CENTRE area, the backdrop and top band span, the tabs, floors, FREE
+meter and prompts are LEFT and the preview and its model RIGHT, in the editor
+only: the palette draws them in its panel. Map Settings' and Editor Settings' value arrows (sprites
 from `0x00119D49`, `0x00119DC7`) pick their row and are the D-pad's left
 and right. The Mode question's hot spots are its title, the moving
 selection bar, then its lines; only the lines are counted. **The letter

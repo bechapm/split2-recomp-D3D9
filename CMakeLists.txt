@@ -45,6 +45,16 @@ if(COMMAND recomp_title_input)
     recomp_title_input(DEFAULTS config/input_defaults.json MOUSE_LOOK)
 endif()
 
+# TimeSplitters 2 has no widescreen mode of its own: its camera is widened
+# where the game builds it (ts2_camera_setup in src/recomp_manual.c), by
+# however much the player's aspect ratio needs -- 16:9, 16:10, 21:9, 32:9 --
+# and its menus and HUD are kept in proportion by call site. Said here so
+# the launcher offers every shape, not only 16:9, and so the window opens
+# at the shape chosen. Its projection is in c60.
+if(COMMAND recomp_title_widescreen)
+    recomp_title_widescreen(HOR_PLUS REGISTER 60)
+endif()
+
 # CONFIGURE_DEPENDS so a re-lift that adds or removes a chunk is picked up
 # without a manual re-configure.
 file(GLOB RECOMP_GEN_SOURCES CONFIGURE_DEPENDS "src/recomp/gen/*.c")
@@ -65,6 +75,7 @@ set(SPLIT2_SOURCES
     src/ts2_mouse.c
     src/ts2_menu_mouse.c
     src/ts2_mapmaker_mouse.c
+    src/ts2_mapmaker_view.c
     src/ts2_devtools.c
     ${RECOMP_GEN_SOURCES}
 )
