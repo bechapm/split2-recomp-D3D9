@@ -144,13 +144,14 @@ typedef struct Hit {
 
 /* What a click is on, noted when the left button goes down and compared
  * when it comes up (n_target, n_same). */
-enum { T_NONE, T_PAGE, T_SCROLL, T_HINT, T_INVENTORY, T_EMPTY, T_ITEM, T_PICKER };
+enum { T_NONE, T_PAGE, T_SCROLL, T_HINT, T_INVENTORY, T_EMPTY, T_ITEM, T_PICKER, T_GALLERY };
 
 typedef struct Target {
     int      kind;
     int      dir;            /* T_PAGE: -1, 1; T_SCROLL: TS2_ARROW_*; T_ITEM: the option side */
     int      button;         /* T_HINT: 1 B, 2 A */
     int      row;            /* T_INVENTORY; T_PICKER: the cell, row * 6 + column;
+                              * T_GALLERY: the cell, or -1 for anywhere (a description open); 
                               * T_PAGE of a row's arrow: its height */
     uint32_t item;           /* T_ITEM */
 } Target;
@@ -208,6 +209,13 @@ static struct {
      * frame; 0 none. */
     uint32_t picker;
     unsigned picker_frame;
+    /* A slider being dragged (n_slider_set): its item, panel and screen. */
+    uint32_t slider, slider_panel, slider_screen;
+    /* The gallery: the cell the pointer picked, written at the game's pad
+     * read (ts2_menu_pad_read), and the cell under it last frame; each
+     * the cell + 1, 0 for none. */
+    volatile int gallery_pending;
+    int      gallery_last;
 } N;
 
 static int n_picker_up(void);
@@ -1830,6 +1838,124 @@ static void n_picker_pick(int cell)
                 cell % 6, cell / 6);
 }
 
+/* ── a panel's sliders ───────────────────────────────────────── */
+
+/* Where a slider item keeps its value, or 0 when the item is no slider. */
+static uint32_t n_slider_value(uint32_t i)
+{
+    int k, tag;
+
+    if (!A->slider_draw || N_MEM32(i + TS2_MI_DRAW) != A->slider_draw)
+        return 0;
+    tag = N_MEMI(i + TS2_MI_TAG);
+    for (k = 0; k < 2; k++)
+        if (A->slider_value[k] && (int)A->slider_tag[k] == tag)
+            return A->slider_value[k];
+    return 0;
+}
+
+/* A slider's bar, as its draw places it in the item's box. */
+static int n_slider_bar(uint32_t p, uint32_t i, float *bx, float *by, float *bw)
+{
+    float x0, y0, x1, y1;
+
+    n_box(p, i, &x0, &y0, &x1, &y1);
+    *bx = x0 + 30.0f;
+    *by = y0 + 28.0f;
+    *bw = (x1 - x0) - 40.0f;
+    return *bw > 8.0f;
+}
+
+/* Whether (x, y) is on the bar of the slider h is, with a little slack. */
+static int n_slider_on(const Hit *h, float x, float y)
+{
+    float bx, by, bw;
+
+    return n_slider_value(h->item) && n_slider_bar(h->panel, h->item, &bx, &by, &bw) &&
+           x >= bx - 8.0f && x < bx + bw + 8.0f && y >= by - 6.0f && y < by + 26.0f;
+}
+
+/* Moves a slider toward the value at x on its bar, as a PC slider follows
+ * the pointer. The game's own step does what a change needs (the settings
+ * marked changed, the music's volume applied, its sound), so the value is
+ * put one step short of the one wanted and the D-pad steps it there, on
+ * the row the press selected. One step a press, so a drag follows at the
+ * presses' pace. Not on a slider the game holds still (its sound off). */
+static void n_slider_set(uint32_t p, uint32_t i, float x)
+{
+    uint32_t va = n_slider_value(i);
+    float bx, by, bw;
+    int v, now;
+
+    if (!va || N.frame < N.gap_until || (N_MEM32(i + TS2_MI_FLAGS) & TS2_MI_FIXED) ||
+        !n_slider_bar(p, i, &bx, &by, &bw))
+        return;
+    v = (int)floorf((float)TS2_SLIDER_MAX * (x - bx) / bw + 0.5f);
+    v = v < 0 ? 0 : v > TS2_SLIDER_MAX ? TS2_SLIDER_MAX : v;
+    now = N_MEMI(va);
+    if (now < 0 || now > TS2_SLIDER_MAX || v == now)
+        return;
+    N_MEMI(va) = v > now ? v - 1 : v + 1;
+    n_press(v > now ? XBOX_GAMEPAD_DPAD_RIGHT : XBOX_GAMEPAD_DPAD_LEFT, 0, 0);
+    if (N.log)
+        fprintf(stderr, "[TS2-MENU] frame %u: the slider %08X goes from %d to %d\n", N.frame,
+                va, now, v);
+}
+
+/* ── the gallery ─────────────────────────────────────────────── */
+
+static int n_gallery(uint32_t top)
+{
+    return A->gallery_class && top && N_MEM32(top + 4u) == A->gallery_class;
+}
+
+/* The gallery's cell under (x, y), or -1. Its draws keep their proportions
+ * in widescreen, so the centred pointer is the one. A locked entry is a
+ * cell like any other: the pad selects it, and the game refuses its A. */
+static int n_gallery_cell(float x, float y)
+{
+    int cols = N_MEMI(A->gallery_cols), rows = N_MEMI(A->gallery_rows), c, r;
+    float sc = N_MEMF(A->gallery_scale), pitch;
+
+    if (cols <= 0 || cols > 64 || rows <= 0 || rows > 64 || !(sc > 0.05f && sc < 4.0f))
+        return -1;
+    pitch = 65.0f * sc;
+    x -= (float)A->gallery_x;
+    y -= (float)A->gallery_y;
+    if (x < 0.0f || y < 0.0f)
+        return -1;
+    c = (int)(x / pitch);
+    r = (int)(y / pitch);
+    if (c >= cols || r >= rows)
+        return -1;
+    return r * cols + c;
+}
+
+/* Picks a cell, at the game's next read of the pad in the gallery's update
+ * (ts2_menu_pad_read). Silent, as the D-pad's moves are there. */
+static void n_gallery_pick(int cell)
+{
+    if (cell < 0 || N_MEMI(A->gallery_open) || N_MEMI(A->gallery_selected) == cell)
+        return;
+    N.gallery_pending = cell + 1;
+    if (N.log)
+        fprintf(stderr, "[TS2-MENU] frame %u: the pointer picks gallery cell %d\n", N.frame,
+                cell);
+}
+
+void ts2_menu_pad_read(void (*fn)(void))
+{
+    int cell;
+
+    fn();
+    cell = N.gallery_pending - 1;
+    if (cell < 0)
+        return;
+    N.gallery_pending = 0;
+    if (N.want && n_gallery(n_top_screen()) && !N_MEMI(A->gallery_open))
+        N_MEMI(A->gallery_selected) = cell;
+}
+
 /* What the pointer is on at (x, y), in the order a click takes it: a hint,
  * a page's arrow or a scroll arrow drawn last frame, an Inventory row, a
  * line of the menu (with the side of an option's value it is on), or, on a
@@ -1868,6 +1994,15 @@ static void n_target(uint32_t s, uint32_t top, float x, float y, int in_level,
             if (!t->dir && !N_MEM32(hit->item + TS2_MI_ACTION))
                 t->dir = 1;
         }
+    } else if (n_gallery(top)) {
+        /* The gallery: a cell; with an entry's description open, anywhere
+         * (A closes it). Never Start for a click off the grid. */
+        if (N_MEMI(A->gallery_open)) {
+            t->kind = T_GALLERY;
+            t->row = -1;
+        } else if ((t->row = n_gallery_cell(x, y)) >= 0) {
+            t->kind = T_GALLERY;
+        }
     } else if (!s && !in_level) {
         t->kind = T_EMPTY;
     }
@@ -1896,6 +2031,14 @@ static void n_act(const Target *t, const Hit *hit)
         if (N.log)
             fprintf(stderr, "[TS2-MENU] frame %u: click on the hint: %s\n", N.frame,
                     t->button == 2 ? "A" : t->button == 1 ? "B" : t->button == 3 ? "Y" : "X");
+        break;
+    case T_GALLERY:
+        /* A: opens the entry's description (not a locked one's: the game
+         * refuses it), or closes the one open. */
+        n_press(0, 1, 0);
+        if (N.log)
+            fprintf(stderr, "[TS2-MENU] frame %u: click on gallery cell %d: A\n", N.frame,
+                    t->row);
         break;
     case T_PICKER:
         /* A: the cell picked (the press picked it) is added, or does what
@@ -2002,6 +2145,7 @@ void ts2_menu_frame(void)
         N.esc_backs = 0;
         N.left_held = 0;
         N.armed.kind = T_NONE;
+        N.slider = 0;
         return;
     }
     if (!N.want) {
@@ -2113,6 +2257,23 @@ void ts2_menu_frame(void)
         N.scroll_held = 0;
         N.left_held = (ptr.held & (1u << RECOMP_MOUSE_LEFT)) != 0;
         N.armed.kind = T_NONE;
+        N.slider = 0;
+        return;
+    }
+
+    /* A slider follows the pointer for as long as the button is held on
+     * it, wherever the pointer goes, as a PC slider does; letting go does
+     * nothing more. */
+    if (N.slider) {
+        if ((ptr.held & (1u << RECOMP_MOUSE_LEFT)) && N.slider_screen == top) {
+            N.left_held = 1;
+            if (ptr.inside)
+                n_slider_set(N.slider_panel, N.slider, x);
+            return;
+        }
+        N.slider = 0;
+        N.left_held = (ptr.held & (1u << RECOMP_MOUSE_LEFT)) != 0;
+        N.armed.kind = T_NONE;
         return;
     }
 
@@ -2154,6 +2315,23 @@ void ts2_menu_frame(void)
         n_inventory_select(cur.row);
     if (cur.kind == T_PICKER && (moved || down))
         n_picker_pick(cur.row);
+    if (cur.kind == T_GALLERY && cur.row >= 0 &&
+        ((moved && cur.row + 1 != N.gallery_last) || down))
+        n_gallery_pick(cur.row);
+    N.gallery_last = cur.kind == T_GALLERY ? cur.row + 1 : 0;
+    /* A press on a slider's bar selects its row and sets the value there,
+     * and the drag goes on from it. */
+    if (down && over && n_slider_on(&hit, x, y) &&
+        !(N_MEM32(hit.item + TS2_MI_FLAGS) & TS2_MI_FIXED)) {
+        n_select(&hit);
+        N.hover = hit.item;
+        N.slider = hit.item;
+        N.slider_panel = hit.panel;
+        N.slider_screen = top;
+        N.armed.kind = T_NONE;
+        n_slider_set(hit.panel, hit.item, x);
+        return;
+    }
     /* A press always selects what it is on: the keys may have moved the
      * selection away from the item the pointer last selected. */
     if (over && ((moved && hit.item != N.hover) || down)) {

@@ -246,7 +246,17 @@ written as the picked one (6 by 6 cells, 24 by 20 from the box's corner +
 (6, 4)) and a click is A. In a picker Backspace is X (delete) and Space Y
 (a space), as in a text box, and MapMaker's "Add  Cancel" line under its
 grid (`0x001ADD2C`) steps down to font 0x11 to fit its box with the keys
-named. Typing letters on the keyboard is not done: the game's window gets no
+named. **Sliders and the gallery (2 Nov 2026):** Options' Music and Sound volume
+rows have no values to step (`TS2_MI_CHOICES` 0); their item draw
+(`sub_0008EE20` at I+0x50) is a bar of 0..16 at the box's x + 30, y + 28,
+width - 40. A press on it selects the row and sets the value at the
+pointer, a drag follows it: the value is written one short and the D-pad
+steps it, so the game marks the settings changed, applies the music's
+volume and plays its sound. View Gallery (class `0x002BCA18`) is a grid the
+pointer picks cells of (65 * scale apart from (115, 135)); the cell is
+written at the pad read in its update (`sub_00087B80`), between its copy of
+the selection and the comparison, so the entry's name and hints follow, and
+a click is A (open, close). Typing letters on the keyboard is not done: the game's window gets no
 text input yet (a toolkit change). Not yet: the PAL release. The plan below
 is how it looked before.
 

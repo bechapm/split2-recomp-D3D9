@@ -127,6 +127,10 @@ turn the wheel to scroll a long list (Escape or Backspace goes back, as does
 a click on the Back hint; the right button does nothing in a menu). On a
 setting with values, click the right half of the value (or its right arrow)
 for the next one and the left half (or its left arrow) for the one before.
+A volume slider (Options, Audio) takes a click on its bar as the level at
+that point, and follows the pointer while you drag it. In View Gallery the
+pointer picks a portrait and a click opens its description (another click
+closes it).
 The button hints ("Select", "Back"), the pause menu's page arrows and its
 D-pad picture, and a long list's scroll arrows can be clicked too. While
 you use the keyboard and mouse the hints name keys ("[Enter] Select",

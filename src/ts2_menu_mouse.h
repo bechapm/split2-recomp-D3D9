@@ -83,6 +83,24 @@ typedef struct Ts2MenuAddrs {
      * fitted to its box while it names keys. */
     uint32_t picker_states;
     uint32_t picker_hint;
+    /* A panel's sliders (Options' Music and Sound volume): an item whose
+     * draw (TS2_MI_DRAW) is slider_draw is a bar of 0..TS2_SLIDER_MAX,
+     * x0 + 30 to x1 - 10 across its box and y0 + 28 down, 20 high, stepped
+     * by the D-pad's left and right. Its value is in a dword of the game's,
+     * found by the item's tag (TS2_MI_TAG): two tag, dword pairs. */
+    uint32_t slider_draw;
+    uint32_t slider_tag[2], slider_value[2];
+    /* The gallery (Player Options' View Gallery): its screen's class, the
+     * dwords holding its columns and rows, the float scale of its 64-pixel
+     * portraits (a cell is 65 * scale apart), its grid's corner (ints), the
+     * dword holding the cell selected, and the one non-zero while an
+     * entry's description is open. The pad's read in its update
+     * (gallery_read) is where a cell the pointer picked is written, between
+     * the update's copy of the selection and its comparison with it, so the
+     * game shows the new entry's name and hints. */
+    uint32_t gallery_class, gallery_cols, gallery_rows, gallery_scale;
+    int      gallery_x, gallery_y;
+    uint32_t gallery_selected, gallery_open;
 } Ts2MenuAddrs;
 
 /* The menu state F (one per local player), a screen S, a panel P and an
@@ -135,9 +153,11 @@ enum {
     TS2_MI_NEXT_ROW   = 0x008,  /* I*: the first item of the next row */
     TS2_MI_NEXT_COL   = 0x00C,  /* I*: the next item along the row */
     TS2_MI_OPTION     = 0x010,  /* I*: the item's next look (TS2_MI_LOOK of them) */
+    TS2_MI_TAG        = 0x018,  /* int: what the screen's own code calls it */
     TS2_MI_FONT       = 0x01C,  /* int: its font */
     TS2_MI_FLAGS      = 0x028,  /* 8: cannot be selected; 0x10: selected; 0x100: scrolls */
     TS2_MI_ACTION     = 0x030,  /* what A does on it, or 0 */
+    TS2_MI_DRAW       = 0x050,  /* its own draw, or 0 (a slider's bar) */
     TS2_MI_CHOICES    = 0x040,  /* int: values to step through with left and right */
     TS2_MI_CHOICE     = 0x044,  /* int: the value now */
     TS2_MI_CHOICE_LIST = 0x048, /* the values (TS2_CH_*), linked */
@@ -176,6 +196,9 @@ enum {
      * narrower. */
     TS2_FONT_PICKER_MIN = 0x10, TS2_FONT_PICKER_MAX = 0x14,
 };
+
+/* A slider's value runs 0 to this (sub_0008EF50 clamps it). */
+enum { TS2_SLIDER_MAX = 16 };
 
 /* A player's letter picker (sub_001AD350 draws it, sub_001ACE70 runs it):
  * a grid of 6 by 6 cells, each 24 wide and 20 high (15 with three or more

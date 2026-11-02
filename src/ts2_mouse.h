@@ -143,6 +143,10 @@ void ts2_menu_icon_at(void (*fn)(void));
  * whose, for the pointer to pick its cells. */
 void ts2_menu_picker(void (*fn)(void));
 
+/* The menus' pad read (sub_00087B80): writes the gallery cell the pointer
+ * picked, where the gallery's update looks for a change. */
+void ts2_menu_pad_read(void (*fn)(void));
+
 /* src/recomp_manual.c: whether a model is part of the 2D's layout. */
 void ts2_ui_models(int on);
 
