@@ -562,9 +562,14 @@ static void ts2_draw_world(void (*draw_world)(void), uint32_t context_global)
     draw_world();
 }
 
+extern int ts2_mapmaker_active(void);
+
 static void ts2_camera_setup(void (*camera_setup)(void))
 {
-    float widen = ts2_camera_widen();
+    /* MapMaker's editor has no world to look at: all its 3D is the preview
+     * in its panel, which uses this camera and is held at 4:3 with the
+     * panel, like a menu's model (ts2_mm_preview_enter). */
+    float widen = ts2_mapmaker_active() ? 1.0f : ts2_camera_widen();
 
     if (widen != 1.0f)
         TS2_MEMF(g_esp + 0x0C) *= widen;   /* [esp] is the return address */
@@ -637,6 +642,7 @@ extern void xbox_D3D8SetInterpRegisters(int projection, int affine_first, int af
 
 /* The mouse and keyboard (keys, the mouse turning the player): src/ts2_mouse.c. */
 #include "ts2_mouse.h"
+#include "ts2_mapmaker_mouse.h"
 
 /* The debugging tools (keys, cheats, free camera): src/ts2_devtools.c. */
 #include "ts2_devtools.h"
@@ -703,8 +709,8 @@ static void ts2_present(void (*present)(void))
  *   group      k_ts2_ui_groups: the code that draws a whole piece
  *   area       all of a part of the UI, as a container's default for what is
  *              inside it: while the pause pages draw (ts2_ui_area_enter),
- *              while MapMaker's editor is up (ts2_ui_area_default). A group
- *              marked hud gives way to it
+ *              while MapMaker's editor draws a part of itself
+ *              (ts2_mm_area_enter). A group marked hud gives way to it
  *   default    k_ts2_ui_default: the release's. FILL, full-bleed: whatever
  *              crosses the whole width spans it, the rest stays in proportion
  *
@@ -748,6 +754,7 @@ static void ts2_present(void (*present)(void))
 enum { TS2_UI_AUTO = 0, TS2_UI_STRETCH, TS2_UI_CENTRE, TS2_UI_LEFT, TS2_UI_RIGHT,
        TS2_UI_SIDE, TS2_UI_EDGE, TS2_UI_SPREAD, TS2_UI_FILL };
 #define TS2_UI_PANEL_3D 0x100     /* XBOX_D3D8_2D_PANEL_3D */
+#define TS2_UI_PANEL_ANCHORED 0x200   /* XBOX_D3D8_2D_PANEL_ANCHORED */
 
 /* xboxrecomp src/hle/hle_d3d8_record.h: xbox_D3D8SetTwoDPlacement, recorded in
  * frame captures so a capture replays with these placements. Same values
@@ -781,7 +788,7 @@ static Ts2UiPlace g_ts2_ui_extra[64];   /* RECOMP_TS2_UI_PLACE */
 static int        g_ts2_ui_extra_count;
 static int        g_ts2_ui_default = -1;  /* RECOMP_TS2_UI_DEFAULT, or the release's */
 /* The placement for sites not in the table while a part of the game whose
- * every piece belongs together is up, or -1 (ts2_ui_area_default). */
+ * every piece belongs together draws, or -1. */
 static volatile int g_ts2_ui_area = -1;
 static int        g_ts2_ui_mode = -1;   /* 0 off, 1 placing, 2 placing and tagging sites */
 static int        g_ts2_ui_each_site = 1;   /* a batch holds one site's pieces */
@@ -812,7 +819,8 @@ static void ts2_ui_host_place(int place, uint32_t tag)
     g_ts2_host_place = place;
     g_ts2_host_tag = tag;
     g_ts2_host_models = g_ts2_ui_models;
-    host_SetTwoDPlacement(place | (g_ts2_ui_models ? TS2_UI_PANEL_3D : 0), tag);
+    host_SetTwoDPlacement(place | (g_ts2_ui_models ? TS2_UI_PANEL_3D : 0) |
+                          (g_ts2_ui_models > 1 ? TS2_UI_PANEL_ANCHORED : 0), tag);
 }
 
 /* The callers of the wrapped drawing functions now running, outermost first. */
@@ -897,19 +905,11 @@ static int ts2_ui_place_for(uint32_t site)
     return g_ts2_ui_default >= 0 ? g_ts2_ui_default : k_ts2_ui_default;
 }
 
-/* MapMaker's editor draws its grid, the pieces on it and the hand over it
- * from sites the table does not name, so each went where the renderer's
- * width guess put it: the grid, which spans the screen, stretched to 16:9,
- * the hand and the tab bar kept in proportion in the middle. The hand then
- * stood over the cell it edits only in the middle of the screen, a cell
- * and a half off at the sides (measured from the user's widescreen
- * screenshots, 31 Oct 2026). While the editor's level runs, every site
- * the table does not name is kept in proportion, so grid, pieces, hand
- * and pointer agree (src/ts2_menu_mouse.c, which calls this each frame with
- * TS2_UI_CENTRE or -1). */
-void ts2_ui_area_default(int place)
+/* How many times wider than 4:3 the 2D's area is, for what lays itself out
+ * across it (src/ts2_mapmaker_view.c); 1 when 2D is not placed. */
+float ts2_ui_wide(void)
 {
-    g_ts2_ui_area = place;
+    return ts2_ui_mode() > 0 && ts2_menus_wide() ? ts2_camera_widen() : 1.0f;
 }
 
 /* Whether 3D is part of the layout from here on. */
@@ -944,6 +944,52 @@ static void ts2_ui_area_leave(void)
     g_ts2_ui_area = g_ts2_ui_area_kept;
     ts2_ui_models(g_ts2_ui_models_kept);
     ts2_menu_pause_draw(0);
+}
+
+/* MapMaker's editor. What it draws on the map is a container of its own,
+ * CENTRE, under the default rather than by it: at a close zoom a room can
+ * cross the whole width, and FILL would take that for a backdrop and move its
+ * edges off the grid. The hand and the pointer agree with the grid because
+ * all three are in proportion (src/ts2_mapmaker_view.c widens what they sit
+ * on). Its tabs, prompts and preview go to the edges only in the editor: the
+ * palette and its screens draw the same pieces inside their panel, held in
+ * the middle. A piece's model comes with it, as a menu's does. */
+static int g_ts2_mm_area_kept;
+static int g_ts2_mm_models_kept;
+
+void ts2_mm_area_enter(int place)
+{
+    g_ts2_mm_area_kept = g_ts2_ui_area;
+    g_ts2_ui_area = place;
+}
+
+void ts2_mm_area_leave(void)
+{
+    g_ts2_ui_area = g_ts2_mm_area_kept;
+}
+
+void ts2_mm_chrome_enter(int place)
+{
+    ts2_mm_area_enter(ts2_mapmaker_editing() ? place : g_ts2_ui_area);
+}
+
+void ts2_mm_preview_enter(void)
+{
+    ts2_mm_chrome_enter(TS2_UI_RIGHT);
+    g_ts2_mm_models_kept = g_ts2_ui_models;
+    ts2_ui_models(ts2_mapmaker_editing() ? 2 : 1);
+    /* The panel's box has just gone into the batch, and the model is drawn
+     * straight after its flush: without this the flush puts the renderer
+     * back on no placement, and the model stays in the middle of the
+     * picture while its panel is at the side. */
+    g_ts2_keep_host = ts2_mapmaker_editing();
+}
+
+void ts2_mm_preview_leave(void)
+{
+    g_ts2_keep_host = 0;
+    ts2_ui_models(g_ts2_mm_models_kept);
+    ts2_mm_area_leave();
 }
 
 /* Tagging mode: say once which chain a new site came through. */
@@ -1003,9 +1049,11 @@ static void ts2_ui_reserve(void (*reserve)(void), void (*flush)(void))
              * edge it is nearer and one draw holding both hands' ammo would
              * be pinned to neither. The renderer keeps the old placement
              * through the reservation below (see there). */
+            int kept = g_ts2_keep_host;
+
             g_ts2_keep_host = 1;
             ts2_ui_flush(flush);
-            g_ts2_keep_host = 0;
+            g_ts2_keep_host = kept;
         }
         /* The engine keeps more than one batch (by format, it seems), and
          * flush does not always draw the one that holds the last pieces:

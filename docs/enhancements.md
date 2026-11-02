@@ -76,7 +76,7 @@ it. A site's placement is the first of these (`ts2_ui_place_for`):
 | --- | --- | --- |
 | Exception | `k_ts2_ui_places` | One call site unlike the rest, as a full-screen fade or a page's arrow |
 | Group | `k_ts2_ui_groups` | The code that draws a whole piece, by address range: a menu panel, the radar, each hand's ammo |
-| Area | `ts2_ui_area_enter`, `ts2_ui_area_default` | All of a container, as its default for what is inside: while the pause pages draw (the code drawing them, not the game being paused, so the level around them keeps its anchors), and MapMaker's editor. A group marked `hud` gives way to it, so the gauge the Inventory page borrows from the HUD stays on the page |
+| Area | `ts2_ui_area_enter`, `ts2_mm_area_enter` | All of a container, as its default for what is inside: while the pause pages draw (the code drawing them, not the game being paused, so the level around them keeps its anchors), and the parts of MapMaker's editor. A group marked `hud` gives way to it, so the gauge the Inventory page borrows from the HUD stays on the page |
 | Default | `k_ts2_ui_default` | FILL, full-bleed: what crosses the whole width spans it, the rest stays in proportion. `RECOMP_TS2_UI_DEFAULT` for another |
 
 A formula alone cannot do it: a position does not say what a piece is. The Select
@@ -219,10 +219,15 @@ moves, the left button is A while held (place, lasso), the right button B
 (delete), the wheel the triggers (zoom), and the pointer past the hand's
 limits pushes the left stick (the game's own scrolling). Its screens are the
 same hand over hot spots (`S+0x64C`, count `S+0x650`, the id under the hand
-in `S+0x648`) or rows the pointer picks by writing that id. In widescreen
-every site the placement table does not name is kept in proportion while
-the editor runs (`ts2_ui_area_default`), since the grid was stretched and
-the hand was not. Map Settings' and Editor Settings' value arrows (sprites
+in `S+0x648`) or rows the pointer picks by writing that id. **In widescreen
+the editor shows more of the map (`src/ts2_mapmaker_view.c`):** at the same
+scale, so cells stay square and their size at any shape, and the hand and the
+edge scrolling reach the wider picture's edges. Its view is widened only while
+it updates and draws, since its other screens lay themselves out from the same
+rectangle; maps are unchanged, as nothing that saves one reads the view. The
+grid is a CENTRE area, the backdrop and top band span, the tabs, floors, FREE
+meter and prompts are LEFT and the preview and its model RIGHT, in the editor
+only: the palette draws them in its panel. Map Settings' and Editor Settings' value arrows (sprites
 from `0x00119D49`, `0x00119DC7`) pick their row and are the D-pad's left
 and right. The Mode question's hot spots are its title, the moving
 selection bar, then its lines; only the lines are counted. **The letter

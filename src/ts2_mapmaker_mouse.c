@@ -86,6 +86,11 @@ static int mm_ptr_ok(uint32_t a)
     return (a >= 0x10000u && a < 0x08000000u) || (a >= 0x80000000u && a < 0x88000000u);
 }
 
+const Ts2MapMakerAddrs *ts2_mapmaker_addrs(void)
+{
+    return MA;
+}
+
 int ts2_mapmaker_active(void)
 {
     return MA->level && ts2_menu_frontend() && ts2_menu_level() == MA->level;
@@ -155,9 +160,10 @@ static float mm_clamp(float v, float lo, float hi)
  * screen's own. */
 static void mm_bounds(uint32_t top, float *l, float *t, float *r, float *b)
 {
-    *l = (float)MA->margin_x;
+    ts2_mapmaker_view_span(l, r);
+    *l += (float)MA->margin_x;
     *t = (float)MA->margin_y;
-    *r = 640.0f - (float)MA->margin_x;
+    *r -= (float)MA->margin_x;
     *b = 480.0f - (float)MA->margin_y;
     if (top && MA->screen_bounds) {
         float st = (float)M_MEMI(MA->screen_bounds) / 65536.0f;

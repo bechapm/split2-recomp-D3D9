@@ -208,7 +208,7 @@ void sub_001B7450(void) { ts2_ui_enter(); sub_001B7450_gen(); ts2_ui_leave(); }
 extern void sub_001B7540_gen(void);   /* PAL 0x001B7950, -0x410 */
 void sub_001B7540(void) { ts2_ui_enter(); sub_001B7540_gen(); ts2_ui_leave(); }
 extern void sub_000AA5B0_gen(void);   /* PAL 0x000AA5F0, -0x40 */
-void sub_000AA5B0(void) { ts2_ui_enter(); ts2_menu_sprite_id(); sub_000AA5B0_gen(); ts2_ui_leave(); }
+void sub_000AA5B0(void) { ts2_ui_enter(); ts2_menu_sprite_id(ts2_ui_place_here()); sub_000AA5B0_gen(); ts2_ui_leave(); }
 extern void sub_000AABB0_gen(void);   /* PAL 0x000AABF0, -0x40 */
 void sub_000AABB0(void) { ts2_ui_enter(); sub_000AABB0_gen(); ts2_ui_leave(); }
 extern void sub_000AA630_gen(void);   /* PAL 0x000AA670, -0x40 */
@@ -256,6 +256,46 @@ extern void sub_000C8F00_gen(void);
 void sub_000C8F00(void) { ts2_ui_enter(); sub_000C8F00_gen(); ts2_ui_leave(); }
 extern void sub_000C5AC0_gen(void);
 void sub_000C5AC0(void) { ts2_ui_enter(); sub_000C5AC0_gen(); ts2_ui_leave(); }
+
+/* MapMaker's editor at the picture's width (src/ts2_mapmaker_view.c says
+ * why): the view widened while the editor updates and draws, the screen
+ * rectangle while its grid draws, and the zoom's limits with them. The
+ * helpers are the game's 16.16 multiply and divide; the hook only acts at
+ * the four calls in mapmaker.inc. */
+extern void sub_00117A50_gen(void);
+void sub_00117A50(void) { ts2_mm_view_enter(); sub_00117A50_gen(); ts2_mm_view_leave(); }
+extern void sub_001132D0_gen(void);
+void sub_001132D0(void) { ts2_mm_view_enter(); sub_001132D0_gen(); ts2_mm_view_leave(); }
+extern void sub_00112340_gen(void);
+void sub_00112340(void)
+{
+    ts2_mm_area_enter(TS2_UI_CENTRE);
+    ts2_mm_screen_enter();
+    sub_00112340_gen();
+    ts2_mm_screen_leave();
+    ts2_mm_area_leave();
+}
+extern void sub_0010F4B0_gen(void);
+void sub_0010F4B0(void) { ts2_mm_zoom_limit(4); sub_0010F4B0_gen(); }
+extern void sub_0010F4C0_gen(void);
+void sub_0010F4C0(void) { ts2_mm_zoom_limit(8); sub_0010F4C0_gen(); }
+
+/* Its tabs, FREE meter and prompts at the left and its preview at the right,
+ * in the editor; the palette draws most of them inside its panel. As areas
+ * and not groups for that, since which it is depends on who called, and
+ * since the meter's fill comes from a helper shared with other screens. */
+extern void sub_00112DE0_gen(void);
+void sub_00112DE0(void) { ts2_mm_chrome_enter(TS2_UI_LEFT); sub_00112DE0_gen(); ts2_mm_area_leave(); }
+extern void sub_00112CF0_gen(void);
+void sub_00112CF0(void) { ts2_mm_chrome_enter(TS2_UI_LEFT); sub_00112CF0_gen(); ts2_mm_area_leave(); }
+extern void sub_00111F70_gen(void);
+void sub_00111F70(void) { ts2_mm_chrome_enter(TS2_UI_LEFT); sub_00111F70_gen(); ts2_mm_area_leave(); }
+extern void sub_00112AF0_gen(void);
+void sub_00112AF0(void) { ts2_mm_chrome_enter(TS2_UI_RIGHT); sub_00112AF0_gen(); ts2_mm_area_leave(); }
+extern void sub_00112BF0_gen(void);
+void sub_00112BF0(void) { ts2_mm_chrome_enter(TS2_UI_RIGHT); sub_00112BF0_gen(); ts2_mm_area_leave(); }
+extern void sub_000FF290_gen(void);
+void sub_000FF290(void) { ts2_mm_preview_enter(); sub_000FF290_gen(); ts2_mm_preview_leave(); }
 
 /* The menu pointer (src/ts2_menu_mouse.c) sees the menus drawn: the three
  * text functions above (a button hint is text with a button glyph in it,
@@ -340,11 +380,19 @@ const Ts2UiGroup k_ts2_ui_groups[] = {
      * rounds gone and the spent ones, the type's picture and the gauge.
      * The Inventory page draws the gauge too, and there the pages hold. */
     { 0x000BDE20, 0x000BF440, TS2_UI_SIDE, 1 },
+    /* MapMaker's editor: its floors, at the left with the tabs, and at the
+     * right the name of what is on the hand and the preview's box. */
+    { 0x00112A50, 0x00112AF0, TS2_UI_LEFT, 0 },
+    { 0x00113572, 0x001136D3, TS2_UI_RIGHT, 0 },
     { 0, 0, TS2_UI_AUTO, 0 }
 };
 
 /* Exceptions: sites a group or an area does not cover. Ends at site 0. */
 const Ts2UiPlace k_ts2_ui_places[] = {
+    /* MapMaker's editor: the grid's backdrop, plain and on the Mode question,
+     * and the band and rule across the top, inside the tabs' area. */
+    { 0x001117CE, TS2_UI_STRETCH }, { 0x001117EF, TS2_UI_STRETCH },
+    { 0x00112EB7, TS2_UI_STRETCH }, { 0x00112EDF, TS2_UI_STRETCH },
     /* Full-screen quads, fades and post passes (the glow over the frame). */
     { 0x000224CA, TS2_UI_STRETCH }, { 0x000224F3, TS2_UI_STRETCH },
     { 0x00022520, TS2_UI_STRETCH }, { 0x00022548, TS2_UI_STRETCH },

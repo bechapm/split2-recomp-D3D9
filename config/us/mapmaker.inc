@@ -1,9 +1,10 @@
 /*
- * TimeSplitters 2, USA release: what src/ts2_mapmaker_mouse.c reads.
- * default.xbe SHA-1 3ec95fe3ae9e7794d83a5b489ad8583f352e0c18. Read from the
- * disassembly (31 Oct 2026). Nothing is hooked: the editor runs as it
- * always did, and the mouse writes the hand's position and presses the
- * pad's buttons.
+ * TimeSplitters 2, USA release: what src/ts2_mapmaker_mouse.c and
+ * src/ts2_mapmaker_view.c read. default.xbe SHA-1
+ * 3ec95fe3ae9e7794d83a5b489ad8583f352e0c18. Read from the disassembly (31
+ * Oct 2026). The mouse hooks nothing: the editor runs as it always did, and
+ * the mouse writes the hand's position and presses the pad's buttons. The
+ * wider view's hooks are in overrides.inc.
  *
  * The editor: while its level runs and no screen is up (F+0x24 == 0), the
  * level update sub_000DDC10 calls the editor's, sub_00117A50. The hand is
@@ -39,4 +40,16 @@ static const Ts2MapMakerAddrs k_ts2_mapmaker = {
      * sub_0011C440, bar 0x82 to 0x211), and its list of disks, 0x002D3A2C
      * (sub_0011C780, bar 0x9B to 0x1EE). */
     { { 0x002D37D0, 130, 529 }, { 0x002D3A2C, 155, 494 } },
+    /* view: x and w set by sub_0010F910 from the screen rectangle and only
+     * there; span, left and right from it, sub_0010F7C0, a room's view in
+     * sub_00108FA0 and sub_0010C140, and the zoom. Each cell is 0x200000 of
+     * the map, so the span 0x2000000 is 16 cells across 640 pixels. */
+    { 0x004A2BD8, 0x004A2AA4, 0x004A2AA0, 0x004A2A98, 0x004A2A80 },
+    /* screen: left +0, right +4; sub_001B7450, the box draw, clips to them. */
+    0x00483F28,
+    /* zoom_limits: 0x7800000 (60 cells) and 0x1000000 (8), divided into the
+     * view's width at 0x001194C9 and 0x001194DE (sub_0010F4C0, second
+     * argument) and multiplied at 0x00119540 and 0x00119566 (sub_0010F4B0,
+     * first argument). */
+    { 0x001194CE, 0x001194E3, 0x00119545, 0x0011956B },
 };

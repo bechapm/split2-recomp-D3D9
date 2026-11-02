@@ -118,8 +118,9 @@ void ts2_menu_arrow(int dir);
 void ts2_menu_sprite(int place);
 
 /* A sprite by id (float x, float y, id, colour), before its body runs:
- * MapMaker's tab arrows are drawn as these (sub_000AA5B0). */
-void ts2_menu_sprite_id(void);
+ * MapMaker's tab arrows are drawn as these (sub_000AA5B0). place as
+ * ts2_menu_text's. */
+void ts2_menu_sprite_id(int place);
 
 /* A button's picture (x0, y0, x1, y1, icon, alpha): icon 0 B, 1 A, 2 Y,
  * 3 X, as the pause pages draw their prompts (sub_000AA360 in the USA
@@ -142,10 +143,7 @@ void ts2_menu_icon_at(void (*fn)(void));
  * whose, for the pointer to pick its cells. */
 void ts2_menu_picker(void (*fn)(void));
 
-/* src/recomp_manual.c: the widescreen placement (TS2_UI_*) for every site
- * its table does not name, while MapMaker's editor is up; -1 for the
- * usual. */
-void ts2_ui_area_default(int place);
+/* src/recomp_manual.c: whether a model is part of the 2D's layout. */
 void ts2_ui_models(int on);
 
 /* The pause pages are drawing now or not: prompts name a menu's keys inside

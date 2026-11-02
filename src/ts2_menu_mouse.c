@@ -766,7 +766,7 @@ void ts2_menu_sprite(int place)
 
 /* A sprite by id, (float x, float y, id, colour), sized by its texture:
  * MapMaker's tab arrows, the D-pad's left and right as a pause page's. */
-void ts2_menu_sprite_id(void)
+void ts2_menu_sprite_id(int place)
 {
     uint32_t a = g_esp, ret, rec;
     float x0, y0, x1, y1;
@@ -796,8 +796,11 @@ void ts2_menu_sprite_id(void)
     y0 = N_MEMF(a + 8);
     x1 = x0 + (float)N_MEM16(rec + 0x26);
     y1 = y0 + (float)N_MEM16(rec + 0x2A);
-    n_drawn_add(DR_PAGE, TS2_PLACE_AUTO, ret == A->tab_left ? -1 : 1, 0, x0, y0, x1, y1);
-    if (n_under(TS2_PLACE_AUTO, x0, y0, x1, y1, 4.0f))
+    /* MapMaker's tabs go to the left in its editor, and are found there. */
+    if (place != TS2_PLACE_LEFT && place != TS2_PLACE_RIGHT)
+        place = TS2_PLACE_AUTO;
+    n_drawn_add(DR_PAGE, place, ret == A->tab_left ? -1 : 1, 0, x0, y0, x1, y1);
+    if (n_under(place, x0, y0, x1, y1, 4.0f))
         N_MEM32(a + 16) = n_lit(N_MEM32(a + 16));
 }
 
@@ -1976,12 +1979,7 @@ void ts2_menu_frame(void)
 
     in_level = N_MEM32(A->level_id) < A->level_menus;
     mapmaker = ts2_mapmaker_active();
-    /* MapMaker's editor in widescreen: everything in proportion, so the
-     * grid, the hand and the pointer agree (src/recomp_manual.c). */
-    if (mapmaker != N.mapmaker_ui) {
-        N.mapmaker_ui = mapmaker;
-        ts2_ui_area_default(mapmaker ? TS2_PLACE_CENTRE : -1);
-    }
+    N.mapmaker_ui = mapmaker;
     /* A model in a menu stays with the 2D around it; a level's views are its
      * own, and the pause pages say so as they draw (src/recomp_manual.c). */
     ts2_ui_models(!in_level);
