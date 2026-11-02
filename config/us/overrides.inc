@@ -296,6 +296,13 @@ void sub_000AA2F0(void) { ts2_menu_icon_at(sub_000AA2F0_gen); }
  * (ts2_menu_picker). Not a placement site. */
 extern void sub_001AD350_gen(void);
 void sub_001AD350(void) { ts2_menu_picker(sub_001AD350_gen); }
+/* The pad's read the menus' screens make, sub_00087B80: View Gallery's
+ * update calls it between copying the cell selected and comparing it, so a
+ * cell the pointer picked is written here and the game shows that entry's
+ * name and hints as for the D-pad (ts2_menu_pad_read). Not a placement
+ * site. */
+extern void sub_00087B80_gen(void);
+void sub_00087B80(void) { ts2_menu_pad_read(sub_00087B80_gen); }
 
 /* Where TimeSplitters 2 (USA, this XBE) draws what: the PAL table with each
  * site moved to the USA return address of the same call -- the shift of its

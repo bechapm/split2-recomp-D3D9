@@ -116,4 +116,30 @@ static const Ts2MenuAddrs k_ts2_menu = {
      * x + 6 in font 0x14: 160 pixels of room, 222 with the keys named. */
     0x0040BB38,
     0x001ADD2C,
+    /* slider_draw, slider_tag, slider_value: Options' Audio/Video screen
+     * (class 0x002BB974, update sub_0008EF50, setup sub_0009FDD0) is a
+     * panel whose rows are tagged at I+0x18: 0 Music, 1 Music volume,
+     * 2 Sound, 3 Sound volume, 4 Hud Border, 5 Subtitles. The two volumes
+     * have no values to step (TS2_MI_CHOICES 0) and no action: their item
+     * draw, sub_0008EE20 (I+0x50), draws a bar through sub_000A9E30 at the
+     * box's x + 30, y + 28, the box's width - 40 wide and 20 high, filled to
+     * x + w * v / 16. The values are [0x002BB864] (music) and [0x002BB868]
+     * (sound), 0..16, which the update steps with the D-pad's left and
+     * right, setting [0x0035BE30] (the settings are changed), applying the
+     * music's (sub_001BA400) and playing its sound. */
+    0x0008EE20,
+    { 1, 3 }, { 0x002BB864, 0x002BB868 },
+    /* gallery_*: View Gallery (class 0x002BCA18, update sub_000993F0, draw
+     * sub_0008CC20, setup sub_00099920): a grid of [0x0035C3CC] columns and
+     * [0x0035F064] rows of 64-pixel portraits at scale [0x002220EC] (0.45),
+     * 65 * scale apart from (115, 135); its panel's items are both
+     * unselectable, so it is no panel menu to the pointer. The cell
+     * selected is [0x0035C6E4], [0x0035F070] is non-zero while its
+     * description is open; A opens it (the game refuses a locked entry) and
+     * closes it, B leaves. The update copies the selection to [0x0035F044]
+     * and, after reading the pad (sub_00087B80, called at 0x00099515),
+     * refreshes the name and hints when the two differ. */
+    0x002BCA18, 0x0035C3CC, 0x0035F064, 0x002220EC,
+    115, 135,
+    0x0035C6E4, 0x0035F070,
 };
